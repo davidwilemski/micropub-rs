@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use reqwest;
 use serde::Deserialize;
 use warp::http::StatusCode;
-use warp::{Filter, reject, Rejection};
+use warp::{reject, Filter, Rejection};
 
 // TODO make these configurable via command line, environment, or config file?
 const MAX_CONTENT_LENGTH: u64 = 1024 * 1024 * 50; // 50 megabytes
@@ -79,7 +79,11 @@ impl MicropubHandler {
                 reject::custom(ValidateResponseDeserializeError)
             })?;
 
-        println!("validate_resp: {:?}, scopes: {:?}", validate_response, validate_response.scopes());
+        println!(
+            "validate_resp: {:?}, scopes: {:?}",
+            validate_response,
+            validate_response.scopes()
+        );
 
         if validate_response.me != HOST_WEBSITE {
             return Err(reject::custom(NotAuthorized));
@@ -95,16 +99,17 @@ impl MicropubHandler {
 async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection> {
     // TODO JSON errors?
     if let Some(NotAuthorized) = err.find() {
-        return Ok(warp::reply::with_status("Not Authorized", StatusCode::FORBIDDEN));
+        return Ok(warp::reply::with_status(
+            "Not Authorized",
+            StatusCode::FORBIDDEN,
+        ));
     }
 
-    let internal_server_error = warp::reply::with_status(
-        "",
-        warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-    );
+    let internal_server_error =
+        warp::reply::with_status("", warp::http::StatusCode::INTERNAL_SERVER_ERROR);
 
-    // Technically these really are not needed as 500 is the default response 
-    // for custom rejections but we could do some instrumentation or logging 
+    // Technically these really are not needed as 500 is the default response
+    // for custom rejections but we could do some instrumentation or logging
     // here or whatever.
     if let Some(HTTPClientError) = err.find() {
         return Ok(internal_server_error);
@@ -131,9 +136,7 @@ async fn main() {
         // .and_then(move |auth, form| async {handler.verify_auth(auth, form)});
         .and_then(move |a, f| {
             let h = handler.clone();
-            async move {
-                h.verify_auth(a, f).await
-            }
+            async move { h.verify_auth(a, f).await }
         })
         .recover(handle_rejection);
 
