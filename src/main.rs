@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use reqwest;
 use serde::Deserialize;
-use warp::Filter;
+use warp::http::StatusCode;
+use warp::{Filter, reject, Rejection};
 
 // TODO make these configurable via command line, environment, or config file?
 const MAX_CONTENT_LENGTH: u64 = 1024 * 1024 * 50; // 50 megabytes
@@ -29,11 +30,15 @@ impl TokenValidateResponse {
 
 #[derive(Debug)]
 struct HTTPClientError;
-impl warp::reject::Reject for HTTPClientError {}
+impl reject::Reject for HTTPClientError {}
 
 #[derive(Debug)]
 struct ValidateResponseDeserializeError;
-impl warp::reject::Reject for ValidateResponseDeserializeError {}
+impl reject::Reject for ValidateResponseDeserializeError {}
+
+#[derive(Debug)]
+struct NotAuthorized;
+impl reject::Reject for NotAuthorized {}
 
 struct MicropubHandler {
     http_client: reqwest::Client,
@@ -50,7 +55,7 @@ impl MicropubHandler {
         &self,
         auth: String,
         form: HashMap<String, String>,
-    ) -> Result<impl warp::Reply, warp::reject::Rejection> {
+    ) -> Result<impl warp::Reply, Rejection> {
         println!("auth: {:?}, form: {:?}", auth, form);
 
         let r = self
@@ -64,24 +69,20 @@ impl MicropubHandler {
         let validate_response: TokenValidateResponse = r
             .map_err(|e| {
                 println!("{:?}", e);
-                warp::reject::custom(HTTPClientError)
+                reject::custom(HTTPClientError)
             })?
             .json()
             .await
             .map_err(|e| {
                 println!("{:?}", e);
-                warp::reject::custom(ValidateResponseDeserializeError)
+                reject::custom(ValidateResponseDeserializeError)
             })?;
 
         println!("validate_resp: {:?}, scopes: {:?}", validate_response, validate_response.scopes());
         Ok(warp::reply::with_status(
             warp::reply::reply(),
-            warp::http::StatusCode::OK,
+            StatusCode::OK,
         ))
-            // Err(_) => Ok(warp::reply::with_status(
-            //     warp::reply::reply(),
-            //     warp::http::StatusCode::INTERNAL_SERVER_ERROR,
-            // )),
     }
 }
 
