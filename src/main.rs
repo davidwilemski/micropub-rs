@@ -8,6 +8,7 @@ use warp::{Filter, reject, Rejection};
 // TODO make these configurable via command line, environment, or config file?
 const MAX_CONTENT_LENGTH: u64 = 1024 * 1024 * 50; // 50 megabytes
 const AUTH_TOKEN_ENDPOINT: &str = "https://tokens.indieauth.com/token";
+const HOST_WEBSITE: &str = "https://davidwilemski.com/";
 
 #[derive(Debug, Deserialize)]
 struct TokenValidateResponse {
@@ -79,11 +80,41 @@ impl MicropubHandler {
             })?;
 
         println!("validate_resp: {:?}, scopes: {:?}", validate_response, validate_response.scopes());
+
+        if validate_response.me != HOST_WEBSITE {
+            return Err(reject::custom(NotAuthorized));
+        }
+
         Ok(warp::reply::with_status(
             warp::reply::reply(),
             StatusCode::OK,
         ))
     }
+}
+
+async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection> {
+    // TODO JSON errors?
+    if let Some(NotAuthorized) = err.find() {
+        return Ok(warp::reply::with_status("Not Authorized", StatusCode::FORBIDDEN));
+    }
+
+    let internal_server_error = warp::reply::with_status(
+        "",
+        warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+    );
+
+    // Technically these really are not needed as 500 is the default response 
+    // for custom rejections but we could do some instrumentation or logging 
+    // here or whatever.
+    if let Some(HTTPClientError) = err.find() {
+        return Ok(internal_server_error);
+    }
+    if let Some(ValidateResponseDeserializeError) = err.find() {
+        return Ok(internal_server_error);
+    }
+
+    // Otherwise pass the rejection through the filter stack
+    Err(err)
 }
 
 #[tokio::main]
@@ -103,7 +134,8 @@ async fn main() {
             async move {
                 h.verify_auth(a, f).await
             }
-        });
+        })
+        .recover(handle_rejection);
 
     warp::serve(micropub).run(([127, 0, 0, 1], 3030)).await;
 }
