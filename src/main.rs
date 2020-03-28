@@ -132,8 +132,6 @@ async fn main() {
         .and(warp::header::<String>("Authorization"))
         .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
         .and(warp::body::form::<HashMap<String, String>>())
-        // .map(|auth, form| "blah");
-        // .and_then(move |auth, form| async {handler.verify_auth(auth, form)});
         .and_then(move |a, f| {
             let h = handler.clone();
             async move { h.verify_auth(a, f).await }
