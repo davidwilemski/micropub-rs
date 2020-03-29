@@ -19,6 +19,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8aac770f1885fd7e387acedd76065302551364496e46b3dd00860b2f8359b9d"
 
 [[package]]
+name = "backtrace"
+version = "0.3.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1e692897359247cc6bb902933361652380af0f1b7651ae5c5013407f30e109e"
+dependencies = [
+ "backtrace-sys",
+ "cfg-if",
+ "libc",
+ "rustc-demangle",
+]
+
+[[package]]
+name = "backtrace-sys"
+version = "0.1.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7de8aba10a69c8e8d7622c5710229485ec32e9d55fdad160ea559c086fdcd118"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "base64"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -129,6 +151,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b3a71ab494c0b5b860bdc8407ae08978052417070c2ced38573a9157ad75b8ac"
 
 [[package]]
+name = "data-encoding"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11c0346158a19b3627234e15596f5e465c360fcdb97d817bcb255e0510f5a788"
+
+[[package]]
 name = "digest"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -150,6 +178,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd8d03faa7fe0c1431609dfad7bbe827af30f82e1e2ae6f7ee4fca6bd764bc28"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "error-chain"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d371106cc88ffdfb1eabd7111e432da544f16f3e2d7bf1dfe8bf575f1df045cd"
+dependencies = [
+ "backtrace",
+ "version_check 0.9.1",
 ]
 
 [[package]]
@@ -530,8 +568,10 @@ name = "micropub-rs"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
  "reqwest",
  "serde",
+ "serde_qs",
  "tokio",
  "warp",
 ]
@@ -689,6 +729,12 @@ dependencies = [
  "pkg-config",
  "vcpkg",
 ]
+
+[[package]]
+name = "percent-encoding"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31010dd2e1ac33d5b46a5b413495239882813e0369f8ed8a5e266f173602f831"
 
 [[package]]
 name = "percent-encoding"
@@ -1012,7 +1058,7 @@ dependencies = [
  "mime 0.3.16",
  "mime_guess 2.0.3",
  "native-tls",
- "percent-encoding",
+ "percent-encoding 2.1.0",
  "pin-project-lite",
  "serde",
  "serde_json",
@@ -1026,6 +1072,12 @@ dependencies = [
  "web-sys",
  "winreg",
 ]
+
+[[package]]
+name = "rustc-demangle"
+version = "0.1.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4c691c0e608126e00913e33f0ccf3727d5fc84573623b8d65b2df340b5201783"
 
 [[package]]
 name = "ryu"
@@ -1105,6 +1157,18 @@ checksum = "9371ade75d4c2d6cb154141b9752cf3781ec9c05e0e5cf35060e1e70ee7b9c25"
 dependencies = [
  "itoa",
  "ryu",
+ "serde",
+]
+
+[[package]]
+name = "serde_qs"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d43eef44996bbe16e99ac720e1577eefa16f7b76b5172165c98ced20ae9903e1"
+dependencies = [
+ "data-encoding",
+ "error-chain",
+ "percent-encoding 1.0.1",
  "serde",
 ]
 
@@ -1348,7 +1412,7 @@ checksum = "829d4a8476c35c9bf0bbce5a3b23f4106f79728039b726d292bb93bc106787cb"
 dependencies = [
  "idna",
  "matches",
- "percent-encoding",
+ "percent-encoding 2.1.0",
 ]
 
 [[package]]

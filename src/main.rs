@@ -1,7 +1,6 @@
-use std::collections::HashMap;
-
 use reqwest;
 use serde::Deserialize;
+use serde_qs;
 use warp::http::StatusCode;
 use warp::{reject, Filter, Rejection};
 
@@ -26,6 +25,35 @@ impl TokenValidateResponse {
         } else {
             self.scope.split_whitespace().collect()
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone, Deserialize)]
+struct MicropubForm {
+    /// Access token (token used to authenticate the operation).
+    /// May be used in place of a bearer token authorization header.
+    access_token: Option<String>,
+
+    /// Entry type
+    h: String,
+
+    /// Text content of the entry
+    content: String,
+
+    /// Categories (tags) for the entry
+    category: Vec<String>,
+
+    /// Name/Title of the h-entry (article/blog post).
+    /// Note that h-notes do not contain a name.
+    name: Option<String>,
+    // TODO: support additional fields and properties
+}
+
+impl MicropubForm {
+    fn from_bytes(b: &[u8]) -> Result<Self, serde_qs::Error> {
+        let parser = serde_qs::Config::new(5, false);
+        let v = parser.deserialize_bytes(b).unwrap();
+        Ok(v)
     }
 }
 
@@ -55,9 +83,18 @@ impl MicropubHandler {
     async fn verify_auth(
         &self,
         auth: String,
-        form: HashMap<String, String>,
+        body: bytes::Bytes,
     ) -> Result<impl warp::Reply, Rejection> {
-        println!("auth: {:?}, form: {:?}", auth, form);
+        println!("body: {:?}", &body.slice(..));
+        // TODO support other content types than x-www-form-urlencoded (e.g. JSON)
+        // The urlencoded support is a must in the spec whereas JSON is a should.
+        // V1 doesn't need it but it will need to come eventually.
+        let form = MicropubForm::from_bytes(&body.slice(..)).map_err(|e| {
+            println!("{:?}", e);
+            reject::custom(ValidateResponseDeserializeError)
+        })?;
+
+        println!("auth: {:?} \n form: {:?}", auth, form);
 
         let r = self
             .http_client
@@ -131,12 +168,30 @@ async fn main() {
         .and(warp::post())
         .and(warp::header::<String>("Authorization"))
         .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
-        .and(warp::body::form::<HashMap<String, String>>())
-        .and_then(move |a, f| {
+        .and(warp::body::bytes())
+        .and_then(move |a, body| {
             let h = handler.clone();
-            async move { h.verify_auth(a, f).await }
+            async move { h.verify_auth(a, body).await }
         })
         .recover(handle_rejection);
 
     warp::serve(micropub).run(([127, 0, 0, 1], 3030)).await;
+}
+
+mod test {
+    use super::MicropubForm;
+
+    #[test]
+    fn micropub_form_decode() {
+        let qs = b"h=entry&content=this+is+only+a+test+of+micropub&category%5B%5D=test&category%5B%5D=micropub";
+        let form = MicropubForm {
+            access_token: None,
+            name: None,
+            h: "entry".into(),
+            content: "this is only a test of micropub".into(),
+            category: vec!["test".into(), "micropub".into()],
+        };
+
+        assert_eq!(form, MicropubForm::from_bytes(&qs[..]).unwrap());
+    }
 }
