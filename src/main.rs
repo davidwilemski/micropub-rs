@@ -12,9 +12,12 @@ use serde_qs;
 use warp::http::StatusCode;
 use warp::{reject, Filter, Rejection};
 
+mod errors;
+mod fetch;
 mod schema;
 mod post_util;
 
+use errors::DBError;
 use schema::{posts, categories};
 
 // TODO make these configurable via command line, environment, or config file?
@@ -98,10 +101,6 @@ impl reject::Reject for ValidateResponseDeserializeError {}
 #[derive(Debug)]
 struct NotAuthorized;
 impl reject::Reject for NotAuthorized {}
-
-#[derive(Debug)]
-struct DBError;
-impl reject::Reject for DBError {}
 
 struct MicropubHandler {
     http_client: reqwest::Client,
@@ -263,6 +262,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let micropub_handler = Arc::new(
         MicropubHandler::new(dbpool.clone())
     );
+    let fetch_handler = Arc::new(
+        fetch::FetchHandler::new(dbpool.clone())
+    );
 
     let micropub = warp::path!("micropub")
         .and(warp::post())
@@ -275,7 +277,14 @@ async fn main() -> Result<(), anyhow::Error> {
         })
         .recover(handle_rejection);
 
-    warp::serve(micropub).run(([127, 0, 0, 1], 3030)).await;
+        let fetch_post = warp::path::param()
+            .and(warp::get())
+            .and_then(move |slug: String| {
+                let h = fetch_handler.clone();
+                async move { h.fetch_post(&slug).await }
+            });
+
+    warp::serve(micropub.or(fetch_post)).run(([127, 0, 0, 1], 3030)).await;
 
     Ok(())
 }

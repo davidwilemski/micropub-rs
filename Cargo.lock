@@ -614,6 +614,7 @@ dependencies = [
  "diesel",
  "reqwest",
  "serde",
+ "serde_json",
  "serde_qs",
  "tokio",
  "url",
