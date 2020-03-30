@@ -1,8 +1,20 @@
+#[macro_use]
+extern crate diesel;
+
+use std::env;
+
+use diesel::prelude::*;
+use diesel::r2d2;
 use reqwest;
 use serde::Deserialize;
 use serde_qs;
 use warp::http::StatusCode;
 use warp::{reject, Filter, Rejection};
+
+mod schema;
+mod post_util;
+
+use schema::{posts, categories};
 
 // TODO make these configurable via command line, environment, or config file?
 const MAX_CONTENT_LENGTH: u64 = 1024 * 1024 * 50; // 50 megabytes
@@ -57,6 +69,23 @@ impl MicropubForm {
     }
 }
 
+#[derive(Debug, Insertable)]
+#[table_name="posts"]
+pub struct NewPost<'a> {
+    pub slug: &'a str,
+    pub entry_type: &'a str,
+    pub name: Option<&'a str>,
+    pub content: Option<&'a str>,
+    pub client_id: Option<&'a str>,
+}
+
+#[derive(Debug, Insertable)]
+#[table_name="categories"]
+pub struct NewCategory<'a> {
+    post_id: i32,
+    pub category: &'a str,
+}
+
 #[derive(Debug)]
 struct HTTPClientError;
 impl reject::Reject for HTTPClientError {}
@@ -69,15 +98,24 @@ impl reject::Reject for ValidateResponseDeserializeError {}
 struct NotAuthorized;
 impl reject::Reject for NotAuthorized {}
 
+#[derive(Debug)]
+struct DBError;
+impl reject::Reject for DBError {}
+
 struct MicropubHandler {
     http_client: reqwest::Client,
+    dbpool: r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>,
 }
 
 impl MicropubHandler {
-    fn new() -> Self {
-        MicropubHandler {
+    fn new(db_file: &str) -> Result<Self, anyhow::Error> {
+        let manager = r2d2::ConnectionManager::<SqliteConnection>::new(db_file);
+        let handler = MicropubHandler {
             http_client: reqwest::Client::new(),
-        }
+            dbpool: r2d2::Pool::new(manager)?,
+        };
+
+        Ok(handler)
     }
 
     async fn verify_auth(
@@ -126,11 +164,65 @@ impl MicropubHandler {
             return Err(reject::custom(NotAuthorized));
         }
 
+        let slug = post_util::get_slug(form.name.as_deref(), &form.content);
+
+        let new_post = NewPost {
+            name: form.name.as_deref(),
+            slug: &slug, // TODO support inputting slug as part of the Micropub document/form
+            entry_type: &form.h,
+            content: Some(&form.content),
+            client_id: Some(&validate_response.client_id),
+        };
+
+        let conn = self.dbpool.get()
+            .map_err(|e| {
+                println!("{:?}", e);
+                reject::custom(DBError)
+            })?;
+
+        conn
+            .transaction::<_, anyhow::Error, _>(|| {
+                diesel::insert_into(posts::table)
+                    .values(&new_post)
+                    .execute(&conn)?;
+                let post_id = get_latest_post_id(&conn)?;
+                let new_categories: Vec<NewCategory> = form
+                    .category
+                    .iter()
+                    .map(|c| {
+                        NewCategory {
+                            post_id: post_id,
+                            category: c.as_str()
+                        }
+                    }).collect();
+
+                for c in new_categories {
+                    diesel::insert_into(categories::table)
+                        .values(c)
+                        .execute(&conn)?;
+                }
+
+                Ok(())
+            })
+            .map_err(|e| {
+                println!("{:?}", e);
+                reject::custom(DBError)
+            })?;
+
         Ok(warp::reply::with_status(
             warp::reply::reply(),
             StatusCode::OK,
         ))
     }
+}
+
+fn get_latest_post_id(conn: &SqliteConnection) -> Result<i32, diesel::result::Error> {
+    use schema::posts::dsl::*;
+    posts
+        .select(id)
+        .order(id.desc())
+        .limit(1)
+        .first(conn)
 }
 
 async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection> {
@@ -160,9 +252,9 @@ async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection>
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), anyhow::Error> {
     use std::sync::Arc;
-    let handler = Arc::new(MicropubHandler::new());
+    let handler = Arc::new(MicropubHandler::new(&env::var("DATABASE_URL")?)?);
 
     let micropub = warp::path!("micropub")
         .and(warp::post())
@@ -176,8 +268,11 @@ async fn main() {
         .recover(handle_rejection);
 
     warp::serve(micropub).run(([127, 0, 0, 1], 3030)).await;
+
+    Ok(())
 }
 
+#[cfg(test)]
 mod test {
     use super::MicropubForm;
 
