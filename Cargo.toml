@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0"
 bytes = "0.5"
+diesel = { version = "1.4", features = ["sqlite", "r2d2"] }
 reqwest = { version = "0.10", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_qs = "0.5"
