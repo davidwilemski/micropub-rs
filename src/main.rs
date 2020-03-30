@@ -2,6 +2,7 @@
 extern crate diesel;
 
 use std::env;
+use std::sync::Arc;
 
 use diesel::prelude::*;
 use diesel::r2d2;
@@ -104,18 +105,22 @@ impl reject::Reject for DBError {}
 
 struct MicropubHandler {
     http_client: reqwest::Client,
-    dbpool: r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>,
+    dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
+}
+
+fn new_dbconn_pool(db_file: &str) -> Result<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>, anyhow::Error> {
+        let manager = r2d2::ConnectionManager::<SqliteConnection>::new(db_file);
+        Ok(r2d2::Pool::new(manager)?)
 }
 
 impl MicropubHandler {
-    fn new(db_file: &str) -> Result<Self, anyhow::Error> {
-        let manager = r2d2::ConnectionManager::<SqliteConnection>::new(db_file);
+    fn new(pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>) -> Self {
         let handler = MicropubHandler {
             http_client: reqwest::Client::new(),
-            dbpool: r2d2::Pool::new(manager)?,
+            dbpool: pool,
         };
 
-        Ok(handler)
+        handler
     }
 
     async fn verify_auth(
@@ -253,8 +258,11 @@ async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection>
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    use std::sync::Arc;
-    let handler = Arc::new(MicropubHandler::new(&env::var("DATABASE_URL")?)?);
+    let dbfile = env::var("DATABASE_URL")?;
+    let dbpool = Arc::new(new_dbconn_pool(&dbfile)?);
+    let micropub_handler = Arc::new(
+        MicropubHandler::new(dbpool.clone())
+    );
 
     let micropub = warp::path!("micropub")
         .and(warp::post())
@@ -262,7 +270,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
         .and(warp::body::bytes())
         .and_then(move |a, body| {
-            let h = handler.clone();
+            let h = micropub_handler.clone();
             async move { h.verify_auth(a, body).await }
         })
         .recover(handle_rejection);
