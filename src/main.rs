@@ -17,6 +17,7 @@ mod fetch;
 mod models;
 mod post_util;
 mod schema;
+mod view_models;
 
 use errors::DBError;
 use models::{NewPost, NewCategory};

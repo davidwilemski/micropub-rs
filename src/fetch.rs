@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use diesel::prelude::*;
 use diesel::r2d2;
-use warp::http::StatusCode;
-use warp::{reject, Filter, Rejection};
+use warp::{reject, Rejection};
 
-use crate::models::Post;
+use crate::view_models::{Post as PostView};
+use crate::models::{Post};
 use crate::errors::*;
 
 
@@ -41,9 +41,19 @@ impl FetchHandler {
                 }
             })?;
 
+        use crate::schema::categories::dsl::*;
+        let tags: Vec<String> = categories
+            .select(category)
+            .filter(post_id.eq(post.id))
+            .get_results(&conn)
+            .map_err(|e| {
+                println!("{:?}", e);
+                reject::custom(DBError)
+            })?;
+
         // TODO get categories
 
-        let result = serde_json::to_string(&post)
+        let result = serde_json::to_string(&PostView::new_from(post, tags))
             .map_err(|e| {
                 println!("{:?}", e);
                 reject::custom(DBError)
