@@ -21,15 +21,13 @@ impl FetchHandler {
     }
 
     pub async fn fetch_post(&self, url_slug: &str) -> Result<impl warp::Reply, Rejection> {
-        use crate::schema::posts::dsl::*;
         let conn = self.dbpool.get()
             .map_err(|e| {
                 println!("{:?}", e);
                 reject::custom(DBError)
             })?;
 
-        let post = posts
-            .filter(slug.eq(url_slug))
+        let post = Post::by_slug(url_slug)
             .first::<Post>(&conn)
             .map_err(|e: diesel::result::Error| {
                 match e {

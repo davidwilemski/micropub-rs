@@ -1,7 +1,26 @@
+use diesel::expression::{AsExpression, Expression};
+use diesel::sqlite::Sqlite;
+use diesel::prelude::*;
 use diesel::Queryable;
 use serde::Serialize;
 
-use crate::schema::{posts, categories};
+use crate::schema::*;
+
+type AllColumns = (
+    posts::id,
+    posts::slug,
+    posts::entry_type,
+    posts::name,
+    posts::content,
+    posts::client_id,
+    posts::created_at,
+    posts::updated_at,
+);
+
+type PostSqlType = <AllColumns as Expression>::SqlType;
+type WithSlug<'a> = diesel::dsl::Eq<posts::slug, &'a str>;
+type BySlug<'a> = diesel::dsl::Filter<Post, WithSlug<'a>>;
+type BoxedPostsQuery<'a> = posts::BoxedQuery<'a, Sqlite, PostSqlType>;
 
 #[derive(Debug, Queryable, Serialize)]
 pub struct Post {
@@ -13,6 +32,16 @@ pub struct Post {
     pub client_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+impl Post {
+
+    pub fn by_slug<'a>(url_slug: &'a str) -> BoxedPostsQuery<'a> {
+        use crate::schema::posts::dsl::*;
+        posts
+            .filter(slug.eq(url_slug))
+            .into_boxed()
+    }
 }
 
 #[derive(Debug, Insertable)]
