@@ -2,24 +2,12 @@ use std::sync::Arc;
 
 use diesel::prelude::*;
 use diesel::r2d2;
-use serde::Serialize;
 use warp::http::StatusCode;
 use warp::{reject, Filter, Rejection};
 
+use crate::models::Post;
 use crate::errors::*;
 
-#[derive(Debug, Queryable, Serialize)]
-struct Post {
-    id: i32,
-    slug: String,
-    entry_type: String,
-    name: Option<String>,
-    content: Option<String>,
-    client_id: Option<String>,
-    created_at: String,
-    updated_at: String,
-    // categories: Vec<String>,
-}
 
 pub struct FetchHandler {
     dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,

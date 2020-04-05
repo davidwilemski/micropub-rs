@@ -14,10 +14,12 @@ use warp::{reject, Filter, Rejection};
 
 mod errors;
 mod fetch;
-mod schema;
+mod models;
 mod post_util;
+mod schema;
 
 use errors::DBError;
+use models::{NewPost, NewCategory};
 use schema::{posts, categories};
 
 // TODO make these configurable via command line, environment, or config file?
@@ -71,23 +73,6 @@ impl MicropubForm {
         let v = parser.deserialize_bytes(b).unwrap();
         Ok(v)
     }
-}
-
-#[derive(Debug, Insertable)]
-#[table_name="posts"]
-pub struct NewPost<'a> {
-    pub slug: &'a str,
-    pub entry_type: &'a str,
-    pub name: Option<&'a str>,
-    pub content: Option<&'a str>,
-    pub client_id: Option<&'a str>,
-}
-
-#[derive(Debug, Insertable)]
-#[table_name="categories"]
-pub struct NewCategory<'a> {
-    post_id: i32,
-    pub category: &'a str,
 }
 
 #[derive(Debug)]
