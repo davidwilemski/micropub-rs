@@ -6,7 +6,7 @@ use crate::models::{Post as DBPost};
 pub struct Post {
     slug: String,
     entry_type: String,
-    name: Option<String>,
+    title: Option<String>,
     content: Option<String>,
     client_id: Option<String>,
     published: String,
@@ -19,7 +19,7 @@ impl Post {
         Post {
             slug: post.slug,
             entry_type: post.entry_type,
-            name: post.name,
+            title: post.name,
             content: post.content,
             client_id: post.client_id,
             published: post.created_at,
