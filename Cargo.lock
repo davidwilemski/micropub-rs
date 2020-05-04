@@ -740,7 +740,6 @@ dependencies = [
  "bytes",
  "chrono",
  "diesel",
- "lazy_static",
  "reqwest",
  "serde",
  "serde_json",

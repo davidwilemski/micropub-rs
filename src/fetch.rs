@@ -9,27 +9,14 @@ use crate::errors::*;
 use crate::models::Post;
 use crate::view_models::Post as PostView;
 
-lazy_static! {
-    pub static ref TEMPLATES: Tera = {
-        // TODO configuration option
-        let tera = match Tera::new("/home/david/dev/blue-penguin/templates/**/*.html") {
-            Ok(t) => t,
-            Err(e) => {
-                println!("Template parsing error(s): {}", e);
-                ::std::process::exit(1);
-            }
-        };
-        tera
-    };
-}
-
 pub struct FetchHandler {
     dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
+    templates: Tera,
 }
 
 impl FetchHandler {
-    pub fn new(pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>) -> Self {
-        FetchHandler { dbpool: pool }
+    pub fn new(pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>, templates: Tera) -> Self {
+        FetchHandler { dbpool: pool, templates }
     }
 
     pub async fn fetch_post(&self, url_slug: &str) -> Result<impl warp::Reply, Rejection> {
@@ -77,7 +64,7 @@ impl FetchHandler {
         let post_view = PostView::new_from(post, tags);
         base_ctx.insert("article", &post_view);
 
-        let page = TEMPLATES.render("article.html", &base_ctx)
+        let page = self.templates.render("article.html", &base_ctx)
             .map_err(|e| {
                 println!("{:?}", e);
                 reject::custom(TemplateError)

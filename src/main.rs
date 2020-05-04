@@ -2,7 +2,7 @@
 extern crate diesel;
 
 #[macro_use]
-extern crate lazy_static;
+extern crate anyhow;
 
 use std::env;
 use std::sync::Arc;
@@ -250,11 +250,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let dbfile = env::var("DATABASE_URL")?;
     let template_dir = env::var(TEMPLATE_DIR_VAR)?;
     let dbpool = Arc::new(new_dbconn_pool(&dbfile)?);
+    let template_pattern = std::path::Path::new(&template_dir).join("templates/**/*.html");
+    let templates = tera::Tera::new(template_pattern.to_str().ok_or(anyhow!("missing templates directory"))?)?;
     let micropub_handler = Arc::new(
         MicropubHandler::new(dbpool.clone())
     );
     let fetch_handler = Arc::new(
-        fetch::FetchHandler::new(dbpool.clone())
+        fetch::FetchHandler::new(dbpool.clone(), templates)
     );
     let static_files = warp::filters::fs::dir(std::path::Path::new(&template_dir).join("static"));
 
