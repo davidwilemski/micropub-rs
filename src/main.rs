@@ -30,6 +30,7 @@ use schema::{posts, categories};
 const MAX_CONTENT_LENGTH: u64 = 1024 * 1024 * 50; // 50 megabytes
 const AUTH_TOKEN_ENDPOINT: &str = "https://tokens.indieauth.com/token";
 const HOST_WEBSITE: &str = "https://davidwilemski.com/";
+const TEMPLATE_DIR_VAR: &str = "MICROPUB_RS_TEMPLATE_DIR";
 
 #[derive(Debug, Deserialize)]
 struct TokenValidateResponse {
@@ -247,6 +248,7 @@ async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection>
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     let dbfile = env::var("DATABASE_URL")?;
+    let template_dir = env::var(TEMPLATE_DIR_VAR)?;
     let dbpool = Arc::new(new_dbconn_pool(&dbfile)?);
     let micropub_handler = Arc::new(
         MicropubHandler::new(dbpool.clone())
@@ -254,6 +256,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let fetch_handler = Arc::new(
         fetch::FetchHandler::new(dbpool.clone())
     );
+    let static_files = warp::filters::fs::dir(std::path::Path::new(&template_dir).join("static"));
 
     let micropub = warp::path!("micropub")
         .and(warp::post())
@@ -273,7 +276,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 async move { h.fetch_post(&slug).await }
             });
 
-    warp::serve(micropub.or(fetch_post)).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(micropub.or(fetch_post.or(warp::path("theme").and(static_files)))).run(([127, 0, 0, 1], 3030)).await;
 
     Ok(())
 }
