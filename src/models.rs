@@ -1,6 +1,6 @@
 use diesel::expression::{AsExpression, Expression};
-use diesel::sqlite::Sqlite;
 use diesel::prelude::*;
+use diesel::sqlite::Sqlite;
 use diesel::Queryable;
 use serde::Serialize;
 
@@ -35,24 +35,19 @@ pub struct Post {
 }
 
 impl Post {
-
     pub fn by_slug<'a>(url_slug: &'a str) -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
-        posts
-            .filter(slug.eq(url_slug))
-            .into_boxed()
+        posts.filter(slug.eq(url_slug)).into_boxed()
     }
 
     pub fn all<'a>() -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
-        posts
-            .order_by(created_at)
-            .into_boxed()
+        posts.order_by(created_at).into_boxed()
     }
 }
 
 #[derive(Debug, Insertable)]
-#[table_name="posts"]
+#[table_name = "posts"]
 pub struct NewPost<'a> {
     pub slug: &'a str,
     pub entry_type: &'a str,
@@ -62,7 +57,7 @@ pub struct NewPost<'a> {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name="categories"]
+#[table_name = "categories"]
 pub struct NewCategory<'a> {
     pub post_id: i32,
     pub category: &'a str,

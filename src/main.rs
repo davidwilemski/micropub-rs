@@ -25,9 +25,11 @@ const AUTH_TOKEN_ENDPOINT: &str = "https://tokens.indieauth.com/token";
 const HOST_WEBSITE: &str = "https://davidwilemski.com/";
 const TEMPLATE_DIR_VAR: &str = "MICROPUB_RS_TEMPLATE_DIR";
 
-fn new_dbconn_pool(db_file: &str) -> Result<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>, anyhow::Error> {
-        let manager = r2d2::ConnectionManager::<SqliteConnection>::new(db_file);
-        Ok(r2d2::Pool::new(manager)?)
+fn new_dbconn_pool(
+    db_file: &str,
+) -> Result<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>, anyhow::Error> {
+    let manager = r2d2::ConnectionManager::<SqliteConnection>::new(db_file);
+    Ok(r2d2::Pool::new(manager)?)
 }
 
 async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection> {
@@ -62,16 +64,20 @@ async fn main() -> Result<(), anyhow::Error> {
     let template_dir = env::var(TEMPLATE_DIR_VAR)?;
     let dbpool = Arc::new(new_dbconn_pool(&dbfile)?);
     let template_pattern = std::path::Path::new(&template_dir).join("templates/**/*.html");
-    let templates = Arc::new(tera::Tera::new(template_pattern.to_str().ok_or(anyhow!("missing templates directory"))?)?);
-    let micropub_handler = Arc::new(
-        handlers::MicropubHandler::new(dbpool.clone())
-    );
-    let fetch_handler = Arc::new(
-        handlers::FetchHandler::new(dbpool.clone(), templates.clone())
-    );
-    let archive_handler = Arc::new(
-        handlers::ArchiveHandler::new(dbpool.clone(), templates.clone())
-    );
+    let templates = Arc::new(tera::Tera::new(
+        template_pattern
+            .to_str()
+            .ok_or(anyhow!("missing templates directory"))?,
+    )?);
+    let micropub_handler = Arc::new(handlers::MicropubHandler::new(dbpool.clone()));
+    let fetch_handler = Arc::new(handlers::FetchHandler::new(
+        dbpool.clone(),
+        templates.clone(),
+    ));
+    let archive_handler = Arc::new(handlers::ArchiveHandler::new(
+        dbpool.clone(),
+        templates.clone(),
+    ));
     let static_files = warp::filters::fs::dir(std::path::Path::new(&template_dir).join("static"));
 
     let micropub = warp::path!("micropub")
@@ -92,14 +98,14 @@ async fn main() -> Result<(), anyhow::Error> {
             async move { h.fetch_post(&slug).await }
         });
 
-    let archives = warp::path!("archives")
-        .and(warp::get())
-        .and_then(move || {
-            let h = archive_handler.clone();
-            async move { h.get().await }
-        });
+    let archives = warp::path!("archives").and(warp::get()).and_then(move || {
+        let h = archive_handler.clone();
+        async move { h.get().await }
+    });
 
-    warp::serve(micropub.or(archives.or(fetch_post.or(warp::path("theme").and(static_files))))).run(([127, 0, 0, 1], 3030)).await;
+    warp::serve(micropub.or(archives.or(fetch_post.or(warp::path("theme").and(static_files)))))
+        .run(([127, 0, 0, 1], 3030))
+        .await;
 
     Ok(())
 }

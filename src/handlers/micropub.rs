@@ -5,13 +5,13 @@ use diesel::r2d2;
 use reqwest;
 use serde::Deserialize;
 use serde_qs;
-use warp::{reject, Rejection};
 use warp::http::StatusCode;
+use warp::{reject, Rejection};
 
 use crate::errors::*;
+use crate::models::{NewCategory, NewPost};
 use crate::post_util;
-use crate::models::{NewPost, NewCategory};
-use crate::schema::{posts, categories};
+use crate::schema::{categories, posts};
 
 #[derive(Debug, PartialEq, Clone, Deserialize)]
 struct MicropubForm {
@@ -63,13 +63,8 @@ impl TokenValidateResponse {
 
 fn get_latest_post_id(conn: &SqliteConnection) -> Result<i32, diesel::result::Error> {
     use crate::schema::posts::dsl::*;
-    posts
-        .select(id)
-        .order(id.desc())
-        .limit(1)
-        .first(conn)
+    posts.select(id).order(id.desc()).limit(1).first(conn)
 }
-
 
 pub struct MicropubHandler {
     http_client: reqwest::Client,
@@ -142,40 +137,37 @@ impl MicropubHandler {
             client_id: Some(&validate_response.client_id),
         };
 
-        let conn = self.dbpool.get()
-            .map_err(|e| {
-                println!("{:?}", e);
-                reject::custom(DBError)
-            })?;
+        let conn = self.dbpool.get().map_err(|e| {
+            println!("{:?}", e);
+            reject::custom(DBError)
+        })?;
 
-        conn
-            .transaction::<_, anyhow::Error, _>(|| {
-                diesel::insert_into(posts::table)
-                    .values(&new_post)
+        conn.transaction::<_, anyhow::Error, _>(|| {
+            diesel::insert_into(posts::table)
+                .values(&new_post)
+                .execute(&conn)?;
+            let post_id = get_latest_post_id(&conn)?;
+            let new_categories: Vec<NewCategory> = form
+                .category
+                .iter()
+                .map(|c| NewCategory {
+                    post_id: post_id,
+                    category: c.as_str(),
+                })
+                .collect();
+
+            for c in new_categories {
+                diesel::insert_into(categories::table)
+                    .values(c)
                     .execute(&conn)?;
-                let post_id = get_latest_post_id(&conn)?;
-                let new_categories: Vec<NewCategory> = form
-                    .category
-                    .iter()
-                    .map(|c| {
-                        NewCategory {
-                            post_id: post_id,
-                            category: c.as_str()
-                        }
-                    }).collect();
+            }
 
-                for c in new_categories {
-                    diesel::insert_into(categories::table)
-                        .values(c)
-                        .execute(&conn)?;
-                }
-
-                Ok(())
-            })
-            .map_err(|e| {
-                println!("{:?}", e);
-                reject::custom(DBError)
-            })?;
+            Ok(())
+        })
+        .map_err(|e| {
+            println!("{:?}", e);
+            reject::custom(DBError)
+        })?;
 
         Ok(warp::reply::with_status(
             warp::reply::reply(),

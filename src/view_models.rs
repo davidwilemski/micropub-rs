@@ -1,7 +1,6 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
-use crate::models::{Post as DBPost};
-
+use crate::models::Post as DBPost;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Date {
@@ -12,12 +11,17 @@ pub struct Date {
 }
 
 impl<T> std::convert::From<&T> for Date
-    where
-    T: chrono::Datelike
+where
+    T: chrono::Datelike,
 {
     fn from(date: &T) -> Self {
         let date_str = format!("{}-{}-{}", date.year(), date.month(), date.day());
-        Self { year: date.year(), month: date.month(), day: date.day(), date: date_str }
+        Self {
+            year: date.year(),
+            month: date.month(),
+            day: date.day(),
+            date: date_str,
+        }
     }
 }
 

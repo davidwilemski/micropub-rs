@@ -7,7 +7,7 @@ use warp::{reject, Rejection};
 
 use crate::errors::*;
 use crate::models::Post;
-use crate::view_models::{Post as PostView, Date as DateView};
+use crate::view_models::{Date as DateView, Post as PostView};
 
 pub struct FetchHandler {
     dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
@@ -15,8 +15,14 @@ pub struct FetchHandler {
 }
 
 impl FetchHandler {
-    pub fn new(pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>, templates: Arc<Tera>) -> Self {
-        FetchHandler { dbpool: pool, templates }
+    pub fn new(
+        pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
+        templates: Arc<Tera>,
+    ) -> Self {
+        FetchHandler {
+            dbpool: pool,
+            templates,
+        }
     }
 
     pub async fn fetch_post(&self, url_slug: &str) -> Result<impl warp::Reply, Rejection> {
@@ -52,7 +58,12 @@ impl FetchHandler {
 
         println!("input datetime: {:?}", post.created_at);
         let datetime = chrono::NaiveDateTime::parse_from_str(&post.created_at, "%Y-%m-%d %H:%M:%S")
-            .map(|ndt| chrono::DateTime::<chrono::Local>::from_utc(ndt, chrono::FixedOffset::east(7 * 3600)))
+            .map(|ndt| {
+                chrono::DateTime::<chrono::Local>::from_utc(
+                    ndt,
+                    chrono::FixedOffset::east(7 * 3600),
+                )
+            })
             .map_err(|e| {
                 println!("date parsing error: {:?}", e);
                 // TODO shouldn't be a template error but realistically this would only happen if
@@ -64,7 +75,9 @@ impl FetchHandler {
         let post_view = PostView::new_from(post, tags, DateView::from(&datetime));
         base_ctx.insert("article", &post_view);
 
-        let page = self.templates.render("article.html", &base_ctx)
+        let page = self
+            .templates
+            .render("article.html", &base_ctx)
             .map_err(|e| {
                 println!("{:?}", e);
                 reject::custom(TemplateError)
