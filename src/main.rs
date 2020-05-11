@@ -62,12 +62,15 @@ async fn main() -> Result<(), anyhow::Error> {
     let template_dir = env::var(TEMPLATE_DIR_VAR)?;
     let dbpool = Arc::new(new_dbconn_pool(&dbfile)?);
     let template_pattern = std::path::Path::new(&template_dir).join("templates/**/*.html");
-    let templates = tera::Tera::new(template_pattern.to_str().ok_or(anyhow!("missing templates directory"))?)?;
+    let templates = Arc::new(tera::Tera::new(template_pattern.to_str().ok_or(anyhow!("missing templates directory"))?)?);
     let micropub_handler = Arc::new(
         handlers::MicropubHandler::new(dbpool.clone())
     );
     let fetch_handler = Arc::new(
-        handlers::FetchHandler::new(dbpool.clone(), templates)
+        handlers::FetchHandler::new(dbpool.clone(), templates.clone())
+    );
+    let archive_handler = Arc::new(
+        handlers::ArchiveHandler::new(dbpool.clone(), templates.clone())
     );
     let static_files = warp::filters::fs::dir(std::path::Path::new(&template_dir).join("static"));
 
@@ -82,14 +85,21 @@ async fn main() -> Result<(), anyhow::Error> {
         })
         .recover(handle_rejection);
 
-        let fetch_post = warp::path::param()
-            .and(warp::get())
-            .and_then(move |slug: String| {
-                let h = fetch_handler.clone();
-                async move { h.fetch_post(&slug).await }
-            });
+    let fetch_post = warp::path::param()
+        .and(warp::get())
+        .and_then(move |slug: String| {
+            let h = fetch_handler.clone();
+            async move { h.fetch_post(&slug).await }
+        });
 
-    warp::serve(micropub.or(fetch_post.or(warp::path("theme").and(static_files)))).run(([127, 0, 0, 1], 3030)).await;
+    let archives = warp::path!("archives")
+        .and(warp::get())
+        .and_then(move || {
+            let h = archive_handler.clone();
+            async move { h.get().await }
+        });
+
+    warp::serve(micropub.or(archives.or(fetch_post.or(warp::path("theme").and(static_files))))).run(([127, 0, 0, 1], 3030)).await;
 
     Ok(())
 }

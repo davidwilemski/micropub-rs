@@ -42,6 +42,13 @@ impl Post {
             .filter(slug.eq(url_slug))
             .into_boxed()
     }
+
+    pub fn all<'a>() -> BoxedPostsQuery<'a> {
+        use crate::schema::posts::dsl::*;
+        posts
+            .order_by(created_at)
+            .into_boxed()
+    }
 }
 
 #[derive(Debug, Insertable)]

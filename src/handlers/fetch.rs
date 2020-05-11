@@ -7,15 +7,15 @@ use warp::{reject, Rejection};
 
 use crate::errors::*;
 use crate::models::Post;
-use crate::view_models::Post as PostView;
+use crate::view_models::{Post as PostView, Date as DateView};
 
 pub struct FetchHandler {
     dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
-    templates: Tera,
+    templates: Arc<Tera>,
 }
 
 impl FetchHandler {
-    pub fn new(pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>, templates: Tera) -> Self {
+    pub fn new(pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>, templates: Arc<Tera>) -> Self {
         FetchHandler { dbpool: pool, templates }
     }
 
@@ -61,7 +61,7 @@ impl FetchHandler {
             })?;
         post.created_at = datetime.to_rfc3339();
 
-        let post_view = PostView::new_from(post, tags);
+        let post_view = PostView::new_from(post, tags, DateView::from(&datetime));
         base_ctx.insert("article", &post_view);
 
         let page = self.templates.render("article.html", &base_ctx)
