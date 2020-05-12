@@ -53,3 +53,9 @@ impl Post {
         }
     }
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ArticlesPage {
+    pub number: u32,
+    pub object_list: Vec<Post>,
+}

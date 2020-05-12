@@ -44,6 +44,14 @@ impl Post {
         use crate::schema::posts::dsl::*;
         posts.order_by(created_at).into_boxed()
     }
+
+    pub fn latest<'a>() -> BoxedPostsQuery<'a> {
+        use crate::schema::posts::dsl::*;
+        posts
+            .order_by(created_at.desc())
+            .limit(1)
+            .into_boxed()
+    }
 }
 
 #[derive(Debug, Insertable)]

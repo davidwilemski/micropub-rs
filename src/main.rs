@@ -78,6 +78,10 @@ async fn main() -> Result<(), anyhow::Error> {
         dbpool.clone(),
         templates.clone(),
     ));
+    let index_handler = Arc::new(handlers::IndexHandler::new(
+        dbpool.clone(),
+        templates.clone(),
+    ));
     let static_files = warp::filters::fs::dir(std::path::Path::new(&template_dir).join("static"));
 
     let micropub = warp::path!("micropub")
@@ -103,7 +107,12 @@ async fn main() -> Result<(), anyhow::Error> {
         async move { h.get().await }
     });
 
-    warp::serve(micropub.or(archives.or(fetch_post.or(warp::path("theme").and(static_files)))))
+    let index = warp::path::end().and(warp::get()).and_then(move || {
+        let h = index_handler.clone();
+        async move { h.get().await }
+    });
+
+    warp::serve(index.or(micropub.or(archives.or(fetch_post.or(warp::path("theme").and(static_files))))))
         .run(([127, 0, 0, 1], 3030))
         .await;
 
