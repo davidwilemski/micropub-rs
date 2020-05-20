@@ -171,7 +171,7 @@ impl MicropubHandler {
 
         Ok(warp::reply::with_status(
             warp::reply::reply(),
-            StatusCode::OK,
+            StatusCode::CREATED,
         ))
     }
 }
