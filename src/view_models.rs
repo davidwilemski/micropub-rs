@@ -8,19 +8,22 @@ pub struct Date {
     month: u32,
     day: u32,
     date: String,
+    time: String,
 }
 
 impl<T> std::convert::From<&T> for Date
 where
-    T: chrono::Datelike,
+    T: chrono::Datelike + chrono::Timelike,
 {
     fn from(date: &T) -> Self {
         let date_str = format!("{}-{}-{}", date.year(), date.month(), date.day());
+        let time_str = format!("{}:{}:{}", date.hour(), date.minute(), date.second());
         Self {
             year: date.year(),
             month: date.month(),
             day: date.day(),
             date: date_str,
+            time: time_str,
         }
     }
 }
