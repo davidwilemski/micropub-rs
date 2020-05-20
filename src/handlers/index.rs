@@ -57,6 +57,12 @@ impl IndexHandler {
         base_ctx.insert("SITENAME", "David's Blog");
         base_ctx.insert("SITEURL", "");
 
+        // Only on main page for indieauth login
+        base_ctx.insert("SOCIAL", &[crate::SOCIAL]);
+        base_ctx.insert("AUTH_ENDPOINT", crate::AUTH_ENDPOINT);
+        base_ctx.insert("TOKEN_ENDPOINT", crate::TOKEN_ENDPOINT);
+        base_ctx.insert("MICROPUB_ENDPOINT", crate::MICROPUB_ENDPOINT);
+
         let datetime = chrono::NaiveDateTime::parse_from_str(&post.created_at, "%Y-%m-%d %H:%M:%S")
             .map(|ndt| {
                 chrono::DateTime::<chrono::Local>::from_utc(
