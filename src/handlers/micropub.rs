@@ -3,8 +3,9 @@ use std::sync::Arc;
 use diesel::prelude::*;
 use diesel::r2d2;
 use reqwest;
+use url::form_urlencoded::parse;
 use serde::Deserialize;
-use serde_qs;
+use thiserror::Error;
 use warp::http::StatusCode;
 use warp::{reject, Rejection};
 
@@ -13,7 +14,64 @@ use crate::models::{NewCategory, NewPost};
 use crate::post_util;
 use crate::schema::{categories, posts};
 
-#[derive(Debug, PartialEq, Clone, Deserialize)]
+#[derive(Debug, Error)]
+enum MicropubFormError {
+    #[error("Required field '{0}' is missing.")]
+    MissingField(String),
+}
+
+#[derive(Debug)]
+struct MicropubFormBuilder {
+    access_token: Option<String>,
+    h: Option<String>,
+    content: Option<String>,
+    category: Vec<String>,
+    name: Option<String>,
+}
+
+impl MicropubFormBuilder {
+    fn new() -> Self {
+        Self {
+            access_token: None,
+            h: None,
+            content: None,
+            category: vec![],
+            name: None,
+        }
+    }
+
+    fn build(self) -> Result<MicropubForm, MicropubFormError> {
+        Ok(MicropubForm {
+            access_token: self.access_token,
+            h: self.h.ok_or(MicropubFormError::MissingField("h".into()))?,
+            content: self.content.ok_or(MicropubFormError::MissingField("content".into()))?,
+            category: self.category,
+            name: self.name,
+        })
+    }
+
+    fn set_access_token(&mut self, val: String) {
+        self.access_token = Some(val);
+    }
+
+    fn set_h(&mut self, val: String) {
+        self.h = Some(val);
+    }
+
+    fn set_content(&mut self, val: String) {
+        self.content = Some(val);
+    }
+
+    fn add_category(&mut self, val: String) {
+        self.category.push(val);
+    }
+
+    fn set_name(&mut self, val: String) {
+        self.name = Some(val);
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
 struct MicropubForm {
     /// Access token (token used to authenticate the operation).
     /// May be used in place of a bearer token authorization header.
@@ -35,10 +93,21 @@ struct MicropubForm {
 }
 
 impl MicropubForm {
-    fn from_bytes(b: &[u8]) -> Result<Self, serde_qs::Error> {
-        let parser = serde_qs::Config::new(5, false);
-        let v = parser.deserialize_bytes(b).unwrap();
-        Ok(v)
+    fn from_bytes(b: &[u8]) -> Result<Self, anyhow::Error> {
+        let p = parse(b);
+        let mut builder = MicropubFormBuilder::new();
+        for (k, v) in p {
+            match &*k {
+                "access_token" => builder.set_access_token(v.into_owned()),
+                "h" => builder.set_h(v.into_owned()),
+                "content" => builder.set_content(v.into_owned()),
+                "category" | "category[]" => builder.add_category(v.into_owned()),
+                "name" => builder.set_name(v.into_owned()),
+                _ => (),
+            }
+        }
+
+        Ok(builder.build()?)
     }
 }
 
@@ -181,7 +250,7 @@ mod test {
     use super::MicropubForm;
 
     #[test]
-    fn micropub_form_decode() {
+    fn micropub_form_decode_category_as_array() {
         let qs = b"h=entry&content=this+is+only+a+test+of+micropub&category%5B%5D=test&category%5B%5D=micropub";
         let form = MicropubForm {
             access_token: None,
@@ -189,6 +258,34 @@ mod test {
             h: "entry".into(),
             content: "this is only a test of micropub".into(),
             category: vec!["test".into(), "micropub".into()],
+        };
+
+        assert_eq!(form, MicropubForm::from_bytes(&qs[..]).unwrap());
+    }
+
+    #[test]
+    fn micropub_form_decode_category_as_single_param_into_vec() {
+        let qs = b"h=entry&content=this+is+only+a+test+of+micropub&category=micropub";
+        let form = MicropubForm {
+            access_token: None,
+            name: None,
+            h: "entry".into(),
+            content: "this is only a test of micropub".into(),
+            category: vec!["micropub".into()],
+        };
+
+        assert_eq!(form, MicropubForm::from_bytes(&qs[..]).unwrap());
+    }
+
+    #[test]
+    fn micropub_form_decode_category_missing_empty_vec() {
+        let qs = b"h=entry&content=this+is+only+a+test+of+micropub";
+        let form = MicropubForm {
+            access_token: None,
+            name: None,
+            h: "entry".into(),
+            content: "this is only a test of micropub".into(),
+            category: vec![],
         };
 
         assert_eq!(form, MicropubForm::from_bytes(&qs[..]).unwrap());
