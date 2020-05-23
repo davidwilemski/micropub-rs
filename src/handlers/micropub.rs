@@ -238,10 +238,16 @@ impl MicropubHandler {
             reject::custom(DBError)
         })?;
 
-        Ok(warp::reply::with_status(
-            warp::reply::reply(),
-            StatusCode::CREATED,
-        ))
+        Ok(
+            warp::reply::with_header(
+                warp::reply::with_status(
+                    warp::reply::reply(),
+                    StatusCode::CREATED,
+                ),
+                "Location",
+                format!("https://davidwilemski.com/{}", slug)
+            )
+        )
     }
 }
 
