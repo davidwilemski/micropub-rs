@@ -37,7 +37,7 @@ pub struct Post {
     client_id: Option<String>,
     published: String,
     updated: String,
-    categories: Vec<String>,
+    tags: Vec<String>,
     date: Date,
 }
 
@@ -52,7 +52,7 @@ impl Post {
             published: post.created_at,
             updated: post.updated_at,
             date: date,
-            categories,
+            tags: categories,
         }
     }
 }
