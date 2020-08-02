@@ -90,12 +90,13 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let micropub = warp::path!("micropub")
         .and(warp::post())
+        .and(warp::filters::header::optional::<String>("Content-Type"))
         .and(warp::header::<String>("Authorization"))
         .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
         .and(warp::body::bytes())
-        .and_then(move |a, body| {
+        .and_then(move |ct, a, body| {
             let h = micropub_handler.clone();
-            async move { h.verify_auth(a, body).await }
+            async move { h.verify_auth(ct, a, body).await }
         })
         .recover(handle_rejection);
 

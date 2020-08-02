@@ -20,13 +20,42 @@ enum MicropubFormError {
     MissingField(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Deserialize)]
+struct MicropubProperties(std::collections::HashMap<String, Vec<String>>);
+
+impl MicropubProperties {
+    fn new(props: std::collections::HashMap<String, Vec<String>>) -> Self {
+        Self(props)
+    }
+
+    fn get(&self, prop: &str) -> Option<&Vec<String>> {
+        self.0.get(prop)
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct MicropubJSONCreate {
+    #[serde(rename = "type")]
+    entry_type: Vec<String>,
+    properties: MicropubProperties,
+}
+
+#[derive(Debug, Deserialize)]
 struct MicropubFormBuilder {
     access_token: Option<String>,
     h: Option<String>,
     content: Option<String>,
-    category: Vec<String>,
+    category: Option<Vec<String>>,
     name: Option<String>,
+}
+
+fn set_from_prop<F>(mut setter: F, props: &MicropubProperties, prop: &str)
+where F: FnMut(String) {
+    props.get(prop).map(|v| {
+        v.first().map(|s| {
+            setter(s.clone())
+        });
+    });
 }
 
 impl MicropubFormBuilder {
@@ -35,9 +64,29 @@ impl MicropubFormBuilder {
             access_token: None,
             h: None,
             content: None,
-            category: vec![],
+            category: None,
             name: None,
         }
+    }
+
+    fn from_json(json_bytes: &[u8]) -> Result<Self, anyhow::Error> {
+        let json_create: MicropubJSONCreate = serde_json::from_slice(json_bytes)?;
+        let mut builder = MicropubFormBuilder::new();
+
+        if let Some(entry_type) = json_create.entry_type.first() {
+            builder.set_h(entry_type.clone())
+        }
+
+        let prop_setter_pairs = vec![
+            ("content", |s| builder.set_content(s)),
+            // ("category", |s| builder.set_content(s)),
+        ];
+
+        for (prop, setter) in prop_setter_pairs {
+            set_from_prop(setter, &json_create.properties, prop);
+        }
+
+        Ok(builder)
     }
 
     fn build(self) -> Result<MicropubForm, MicropubFormError> {
@@ -45,7 +94,7 @@ impl MicropubFormBuilder {
             access_token: self.access_token,
             h: self.h.ok_or(MicropubFormError::MissingField("h".into()))?,
             content: self.content.ok_or(MicropubFormError::MissingField("content".into()))?,
-            category: self.category,
+            category: self.category.unwrap_or(vec![]),
             name: self.name,
         })
     }
@@ -63,7 +112,11 @@ impl MicropubFormBuilder {
     }
 
     fn add_category(&mut self, val: String) {
-        self.category.push(val);
+        if let None = self.category {
+            self.category = Some(vec![])
+        }
+
+        self.category.as_mut().map(|categories| categories.push(val));
     }
 
     fn set_name(&mut self, val: String) {
@@ -93,7 +146,7 @@ struct MicropubForm {
 }
 
 impl MicropubForm {
-    fn from_bytes(b: &[u8]) -> Result<Self, anyhow::Error> {
+    fn from_form_bytes(b: &[u8]) -> Result<Self, anyhow::Error> {
         let p = parse(b);
         let mut builder = MicropubFormBuilder::new();
         for (k, v) in p {
@@ -108,6 +161,10 @@ impl MicropubForm {
         }
 
         Ok(builder.build()?)
+    }
+
+    fn from_json_bytes(b: &[u8]) -> Result<Self, anyhow::Error> {
+        Ok(MicropubFormBuilder::from_json(b)?.build()?)
     }
 }
 
@@ -152,17 +209,34 @@ impl MicropubHandler {
 
     pub async fn verify_auth(
         &self,
+        content_type: Option<String>,
         auth: String,
         body: bytes::Bytes,
     ) -> Result<impl warp::Reply, Rejection> {
         println!("body: {:?}", &body.slice(..));
-        // TODO support other content types than x-www-form-urlencoded (e.g. JSON)
-        // The urlencoded support is a must in the spec whereas JSON is a should.
-        // V1 doesn't need it but it will need to come eventually.
-        let form = MicropubForm::from_bytes(&body.slice(..)).map_err(|e| {
-            println!("{:?}", e);
-            reject::custom(ValidateResponseDeserializeError)
-        })?;
+        let form = if let Some(ct) = content_type {
+            match ct.to_lowercase().as_str() {
+                "application/json" => {
+                    MicropubForm::from_json_bytes(&body.slice(..)).map_err(|e| {
+                        println!("{:?}", e);
+                        reject::custom(ValidateResponseDeserializeError)
+                    })?
+                }
+                _ => {
+                    // x-www-form-urlencoded
+                    MicropubForm::from_form_bytes(&body.slice(..)).map_err(|e| {
+                        println!("{:?}", e);
+                        reject::custom(ValidateResponseDeserializeError)
+                    })?
+                }
+            }
+        } else {
+            // default to x-www-form-urlencoded
+            MicropubForm::from_form_bytes(&body.slice(..)).map_err(|e| {
+                println!("{:?}", e);
+                reject::custom(ValidateResponseDeserializeError)
+            })?
+        };
 
         println!("auth: {:?} \n form: {:?}", auth, form);
 
