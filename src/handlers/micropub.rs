@@ -214,21 +214,20 @@ impl MicropubHandler {
         body: bytes::Bytes,
     ) -> Result<impl warp::Reply, Rejection> {
         println!("body: {:?}", &body.slice(..));
-        let ct = content_type.unwrap_or(Some("x-www-form-url-encoded".into()));
+        let ct = content_type.unwrap_or("x-www-form-url-encoded".into());
         let form = match ct.to_lowercase().as_str() {
-                "application/json" => {
-                    MicropubForm::from_json_bytes(&body.slice(..)).map_err(|e| {
-                        println!("{:?}", e);
-                        reject::custom(ValidateResponseDeserializeError)
-                    })?
-                }
-                _ => {
-                    // x-www-form-urlencoded
-                    MicropubForm::from_form_bytes(&body.slice(..)).map_err(|e| {
-                        println!("{:?}", e);
-                        reject::custom(ValidateResponseDeserializeError)
-                    })?
-                }
+            "application/json" => {
+                MicropubForm::from_json_bytes(&body.slice(..)).map_err(|e| {
+                    println!("{:?}", e);
+                    reject::custom(ValidateResponseDeserializeError)
+                })?
+            }
+            _ => {
+                // x-www-form-urlencoded
+                MicropubForm::from_form_bytes(&body.slice(..)).map_err(|e| {
+                    println!("{:?}", e);
+                    reject::custom(ValidateResponseDeserializeError)
+                })?
             }
         };
 
