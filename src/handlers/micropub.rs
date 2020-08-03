@@ -49,13 +49,24 @@ struct MicropubFormBuilder {
     name: Option<String>,
 }
 
-fn set_from_prop<F>(mut setter: F, props: &MicropubProperties, prop: &str)
+fn set_from_prop<F>(setter: &mut F, props: &MicropubProperties, prop: &str) -> bool
 where F: FnMut(String) {
     props.get(prop).map(|v| {
         v.first().map(|s| {
             setter(s.clone())
         });
-    });
+    }).is_some()
+}
+
+fn set_from_props<F>(mut setter: F, props: &MicropubProperties, props_to_check: &[&str]) -> bool
+where F: FnMut(String) {
+    for prop in props_to_check {
+        if set_from_prop(&mut setter, props, prop) {
+            return true;
+        }
+    }
+
+    false
 }
 
 impl MicropubFormBuilder {
@@ -78,12 +89,12 @@ impl MicropubFormBuilder {
         }
 
         let prop_setter_pairs = vec![
-            ("content", |s| builder.set_content(s)),
+            (["content", "content[html]"], |s| builder.set_content(s)),
             // ("category", |s| builder.set_content(s)),
         ];
 
-        for (prop, setter) in prop_setter_pairs {
-            set_from_prop(setter, &json_create.properties, prop);
+        for (props, mut setter) in prop_setter_pairs {
+            set_from_props(&mut setter, &json_create.properties, &props);
         }
 
         Ok(builder)
