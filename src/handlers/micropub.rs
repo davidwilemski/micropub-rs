@@ -344,7 +344,7 @@ mod test {
             category: vec!["test".into(), "micropub".into()],
         };
 
-        assert_eq!(form, MicropubForm::from_bytes(&qs[..]).unwrap());
+        assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
     }
 
     #[test]
@@ -358,7 +358,7 @@ mod test {
             category: vec!["micropub".into()],
         };
 
-        assert_eq!(form, MicropubForm::from_bytes(&qs[..]).unwrap());
+        assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
     }
 
     #[test]
@@ -372,6 +372,6 @@ mod test {
             category: vec![],
         };
 
-        assert_eq!(form, MicropubForm::from_bytes(&qs[..]).unwrap());
+        assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
     }
 }
