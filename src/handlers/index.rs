@@ -56,6 +56,7 @@ impl IndexHandler {
         base_ctx.insert("DEFAULT_LANG", "en-US");
         base_ctx.insert("SITENAME", "David's Blog");
         base_ctx.insert("SITEURL", "");
+        base_ctx.insert("MENUITEMS", crate::MENU_ITEMS);
 
         // Only on main page for indieauth login
         base_ctx.insert("SOCIAL", &[crate::SOCIAL]);

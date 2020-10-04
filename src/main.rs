@@ -23,6 +23,7 @@ mod view_models;
 const MAX_CONTENT_LENGTH: u64 = 1024 * 1024 * 50; // 50 megabytes
 const AUTH_TOKEN_ENDPOINT: &str = "https://tokens.indieauth.com/token";
 const HOST_WEBSITE: &str = "https://davidwilemski.com/";
+const MENU_ITEMS: &[(&str, &str)] = &[("Archive", "/archives")];
 const TEMPLATE_DIR_VAR: &str = "MICROPUB_RS_TEMPLATE_DIR";
 const SOCIAL: &str = "https://github.com/davidwilemski";
 const MICROPUB_ENDPOINT: &str = "/micropub";

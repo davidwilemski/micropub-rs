@@ -55,6 +55,7 @@ impl FetchHandler {
         base_ctx.insert("DEFAULT_LANG", "en-US");
         base_ctx.insert("SITENAME", "David's Blog");
         base_ctx.insert("SITEURL", "");
+        base_ctx.insert("MENUITEMS", crate::MENU_ITEMS);
 
         println!("input datetime: {:?}", post.created_at);
         let datetime = chrono::NaiveDateTime::parse_from_str(&post.created_at, "%Y-%m-%d %H:%M:%S")

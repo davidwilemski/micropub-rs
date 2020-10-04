@@ -81,6 +81,7 @@ impl ArchiveHandler {
         ctx.insert("DEFAULT_LANG", "en-US");
         ctx.insert("SITENAME", "David's Blog");
         ctx.insert("SITEURL", "");
+        ctx.insert("MENUITEMS", crate::MENU_ITEMS);
 
         ctx.insert("articles", &posts_views);
         ctx.insert("dates", &posts_views);
