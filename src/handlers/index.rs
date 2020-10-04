@@ -2,22 +2,22 @@ use std::sync::Arc;
 
 use diesel::prelude::*;
 use diesel::r2d2;
-use tera::{Context, Tera};
 use warp::{reject, Rejection};
 
 use crate::errors::*;
 use crate::models::Post;
+use crate::templates;
 use crate::view_models::{ArticlesPage, Date as DateView, Post as PostView};
 
 pub struct IndexHandler {
     dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
-    templates: Arc<Tera>,
+    templates: Arc<templates::Templates>,
 }
 
 impl IndexHandler {
     pub fn new(
         pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
-        templates: Arc<Tera>,
+        templates: Arc<templates::Templates>,
     ) -> Self {
         Self {
             dbpool: pool,
@@ -52,17 +52,12 @@ impl IndexHandler {
                 reject::custom(DBError)
             })?;
 
-        let mut base_ctx = Context::new();
-        base_ctx.insert("DEFAULT_LANG", "en-US");
-        base_ctx.insert("SITENAME", "David's Blog");
-        base_ctx.insert("SITEURL", "");
-        base_ctx.insert("MENUITEMS", crate::MENU_ITEMS);
-
         // Only on main page for indieauth login
-        base_ctx.insert("SOCIAL", &[crate::SOCIAL]);
-        base_ctx.insert("AUTH_ENDPOINT", crate::AUTH_ENDPOINT);
-        base_ctx.insert("TOKEN_ENDPOINT", crate::TOKEN_ENDPOINT);
-        base_ctx.insert("MICROPUB_ENDPOINT", crate::MICROPUB_ENDPOINT);
+        let template = self.templates
+            .add_context("SOCIAL", &[crate::SOCIAL])
+            .add_context("AUTH_ENDPOINT", crate::AUTH_ENDPOINT)
+            .add_context("TOKEN_ENDPOINT", crate::TOKEN_ENDPOINT)
+            .add_context("MICROPUB_ENDPOINT", crate::MICROPUB_ENDPOINT);
 
         let datetime = chrono::NaiveDateTime::parse_from_str(&post.created_at, "%Y-%m-%d %H:%M:%S")
             .map(|ndt| {
@@ -81,11 +76,9 @@ impl IndexHandler {
 
         let post_view = PostView::new_from(post, tags, DateView::from(&datetime));
         let articles_page = ArticlesPage { number: 1, object_list: vec![post_view] };
-        base_ctx.insert("articles_page", &articles_page);
-
-        let page = self
-            .templates
-            .render("index.html", &base_ctx)
+        let page = template
+            .add_context("articles_page", &articles_page)
+            .render("index.html")
             .map_err(|e| {
                 println!("{:?}", e);
                 reject::custom(TemplateError)

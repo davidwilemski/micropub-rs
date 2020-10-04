@@ -2,22 +2,22 @@ use std::sync::Arc;
 
 use diesel::prelude::*;
 use diesel::r2d2;
-use tera::{Context, Tera};
 use warp::{reject, Rejection};
 
 use crate::errors::*;
 use crate::models::Post;
+use crate::templates;
 use crate::view_models::{Date as DateView, Post as PostView};
 
 pub struct ArchiveHandler {
     dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
-    templates: Arc<Tera>,
+    templates: Arc<templates::Templates>,
 }
 
 impl ArchiveHandler {
     pub fn new(
         pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
-        templates: Arc<Tera>,
+        templates: Arc<templates::Templates>,
     ) -> Self {
         ArchiveHandler {
             dbpool: pool,
@@ -76,16 +76,10 @@ impl ArchiveHandler {
             posts_views.push(post_view);
         }
 
-        // TODO extract this out into a base context
-        let mut ctx = Context::new();
-        ctx.insert("DEFAULT_LANG", "en-US");
-        ctx.insert("SITENAME", "David's Blog");
-        ctx.insert("SITEURL", "");
-        ctx.insert("MENUITEMS", crate::MENU_ITEMS);
-
-        ctx.insert("articles", &posts_views);
-        ctx.insert("dates", &posts_views);
-        let page = self.templates.render("archives.html", &ctx).map_err(|e| {
+        let template = self.templates
+            .add_context("articles", &posts_views)
+            .add_context("dates", &posts_views);
+        let page = template.render("archives.html").map_err(|e| {
             println!("{:?}", e);
             reject::custom(TemplateError)
         })?;

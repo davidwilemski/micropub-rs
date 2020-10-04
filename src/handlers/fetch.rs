@@ -2,22 +2,22 @@ use std::sync::Arc;
 
 use diesel::prelude::*;
 use diesel::r2d2;
-use tera::{Context, Tera};
 use warp::{reject, Rejection};
 
 use crate::errors::*;
 use crate::models::Post;
+use crate::templates;
 use crate::view_models::{Date as DateView, Post as PostView};
 
 pub struct FetchHandler {
     dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
-    templates: Arc<Tera>,
+    templates: Arc<templates::Templates>,
 }
 
 impl FetchHandler {
     pub fn new(
         pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
-        templates: Arc<Tera>,
+        templates: Arc<templates::Templates>,
     ) -> Self {
         FetchHandler {
             dbpool: pool,
@@ -51,12 +51,6 @@ impl FetchHandler {
                 reject::custom(DBError)
             })?;
 
-        let mut base_ctx = Context::new();
-        base_ctx.insert("DEFAULT_LANG", "en-US");
-        base_ctx.insert("SITENAME", "David's Blog");
-        base_ctx.insert("SITEURL", "");
-        base_ctx.insert("MENUITEMS", crate::MENU_ITEMS);
-
         println!("input datetime: {:?}", post.created_at);
         let datetime = chrono::NaiveDateTime::parse_from_str(&post.created_at, "%Y-%m-%d %H:%M:%S")
             .map(|ndt| {
@@ -74,11 +68,9 @@ impl FetchHandler {
         post.created_at = datetime.to_rfc3339();
 
         let post_view = PostView::new_from(post, tags, DateView::from(&datetime));
-        base_ctx.insert("article", &post_view);
-
-        let page = self
-            .templates
-            .render("article.html", &base_ctx)
+        let page = self.templates
+            .add_context("article", &post_view)
+            .render("article.html")
             .map_err(|e| {
                 println!("{:?}", e);
                 reject::custom(TemplateError)
