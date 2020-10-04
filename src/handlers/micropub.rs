@@ -57,17 +57,17 @@ struct MicropubFormBuilder {
     name: Option<String>,
 }
 
-fn set_from_prop<F>(setter: &mut F, props: &MicropubProperties, prop: &str) -> bool
-where F: FnMut(MicropubPropertyValue) {
+fn set_from_prop<F>(builder: &mut MicropubFormBuilder, setter: &mut F, props: &MicropubProperties, prop: &str) -> bool
+where F: Fn(&mut MicropubFormBuilder, MicropubPropertyValue) {
     props.get(prop).map(|prop| {
-        setter((*prop).clone())
+        setter(builder, (*prop).clone())
     }).is_some()
 }
 
-fn set_from_props<F>(mut setter: F, props: &MicropubProperties, props_to_check: &[&str]) -> bool
-where F: FnMut(MicropubPropertyValue) {
+fn set_from_props<F>(builder: &mut MicropubFormBuilder, mut setter: F, props: &MicropubProperties, props_to_check: &[&str]) -> bool
+where F: Fn(&mut MicropubFormBuilder, MicropubPropertyValue) {
     for prop in props_to_check {
-        if set_from_prop(&mut setter, props, prop) {
+        if set_from_prop(builder, &mut setter, props, prop) {
             return true;
         }
     }
@@ -95,8 +95,8 @@ impl MicropubFormBuilder {
             builder.set_h(entry_type.strip_prefix("h-").unwrap_or(&entry_type).into())
         }
 
-        let prop_setter_pairs: Vec<(&[&str], Box<FnMut(MicropubPropertyValue)>)> = vec![
-            (&["content", "content[html]"][..], Box::new(|val: MicropubPropertyValue| {
+        let prop_setter_pairs: Vec<(&[&str], Box<Fn(&mut MicropubFormBuilder, MicropubPropertyValue)>)> = vec![
+            (&["content", "content[html]"][..], Box::new(|builder: &mut MicropubFormBuilder, val: MicropubPropertyValue| {
                 match val {
                     MicropubPropertyValue::Values(vals) => {
                         vals.first().iter().for_each(|s| {
@@ -121,21 +121,31 @@ impl MicropubFormBuilder {
                     }
                 };
             })),
-            // (&["name"][..], Box::new(|val: MicropubPropertyValue| {
-            //     match val {
-            //         MicropubPropertyValue::Values(vals) => {
-            //             vals.first().iter().for_each(|s| {
-            //                 builder.set_name((**s).clone())
-            //             });
-            //         }
-            //         _ => eprinln!("unexpected name type")
-            //     };
-            // })),
-            // ("category", |s| builder.set_content(s)),
+            (&["name"][..], Box::new(|builder: &mut MicropubFormBuilder, val: MicropubPropertyValue| {
+                match val {
+                    MicropubPropertyValue::Values(vals) => {
+                        vals.first().iter().for_each(|s| {
+                            builder.set_name((**s).clone())
+                        });
+                    }
+                    _ => eprintln!("unexpected name type")
+                };
+            })),
+            (&["category"][..], Box::new(|builder: &mut MicropubFormBuilder, props: MicropubPropertyValue| {
+                match props {
+                    MicropubPropertyValue::Value(c) => {
+                        builder.add_category(c);
+                    }
+                    MicropubPropertyValue::Values(cs) => {
+                        cs.iter().for_each(|c| builder.add_category(c.clone()));
+                    }
+                    _ => eprintln!("unexpected category type")
+                };
+            })),
         ];
 
-        for (props, mut setter) in prop_setter_pairs {
-            set_from_props(&mut setter, &json_create.properties, &props);
+        for (props, setter) in prop_setter_pairs {
+            set_from_props(&mut builder, setter, &json_create.properties, &props);
         }
 
         Ok(builder)
@@ -426,12 +436,10 @@ mod test {
         let bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"name\":[\"Testing quill\"],\"content\":[{\"html\":\"<p>This is a test of https:\\/\\/quill.p3k.io<\\/p>\\n<p>\\n  hello hello\\n  <br \\/>\\n<\\/p>\"}],\"category\":[\"test\"],\"mp-slug\":[\"quill-test\"]}}";
         let form = MicropubForm {
             access_token: None,
-            // name: Some("Testing quill".into()),
-            name: None,
+            name: Some("Testing quill".into()),
             h: "entry".into(),
             content: "<p>This is a test of https://quill.p3k.io</p>\n<p>\n  hello hello\n  <br />\n</p>".into(),
-            // category: vec!["test".into()],
-            category: vec![],
+            category: vec!["test".into()],
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
