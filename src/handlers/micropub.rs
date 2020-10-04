@@ -20,15 +20,23 @@ enum MicropubFormError {
     MissingField(String),
 }
 
-#[derive(Debug, Deserialize)]
-struct MicropubProperties(std::collections::HashMap<String, Vec<String>>);
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+enum MicropubPropertyValue {
+    Value(String),
+    Values(Vec<String>),
+    VecMap(Vec<std::collections::HashMap<String, MicropubPropertyValue>>),
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct MicropubProperties(std::collections::HashMap<String, MicropubPropertyValue>);
 
 impl MicropubProperties {
-    fn new(props: std::collections::HashMap<String, Vec<String>>) -> Self {
+    fn new(props: std::collections::HashMap<String, MicropubPropertyValue>) -> Self {
         Self(props)
     }
 
-    fn get(&self, prop: &str) -> Option<&Vec<String>> {
+    fn get(&self, prop: &str) -> Option<&MicropubPropertyValue> {
         self.0.get(prop)
     }
 }
@@ -50,16 +58,14 @@ struct MicropubFormBuilder {
 }
 
 fn set_from_prop<F>(setter: &mut F, props: &MicropubProperties, prop: &str) -> bool
-where F: FnMut(String) {
-    props.get(prop).map(|v| {
-        v.first().map(|s| {
-            setter(s.clone())
-        });
+where F: FnMut(MicropubPropertyValue) {
+    props.get(prop).map(|prop| {
+        setter((*prop).clone())
     }).is_some()
 }
 
 fn set_from_props<F>(mut setter: F, props: &MicropubProperties, props_to_check: &[&str]) -> bool
-where F: FnMut(String) {
+where F: FnMut(MicropubPropertyValue) {
     for prop in props_to_check {
         if set_from_prop(&mut setter, props, prop) {
             return true;
@@ -85,11 +91,46 @@ impl MicropubFormBuilder {
         let mut builder = MicropubFormBuilder::new();
 
         if let Some(entry_type) = json_create.entry_type.first() {
-            builder.set_h(entry_type.clone())
+            // Normalizes h-entry or h-food into entry and food
+            builder.set_h(entry_type.strip_prefix("h-").unwrap_or(&entry_type).into())
         }
 
-        let prop_setter_pairs = vec![
-            (["content", "content[html]"], |s| builder.set_content(s)),
+        let prop_setter_pairs: Vec<(&[&str], Box<FnMut(MicropubPropertyValue)>)> = vec![
+            (&["content", "content[html]"][..], Box::new(|val: MicropubPropertyValue| {
+                match val {
+                    MicropubPropertyValue::Values(vals) => {
+                        vals.first().iter().for_each(|s| {
+                            builder.set_content((**s).clone())
+                        });
+                    }
+                    MicropubPropertyValue::VecMap(vecmap) => {
+                        // we may get {"content": [{"html": "blah"}]}
+                        // see test case
+                        vecmap.first().iter().for_each(|map| {
+                            map.get("html").map(|content| {
+                                match content {
+                                    MicropubPropertyValue::Value(v) => builder.set_content(v.clone()),
+                                    _ => ()
+
+                                }
+                            });
+                        });
+                    }
+                    MicropubPropertyValue::Value(val) => {
+                        builder.set_content(val.clone());
+                    }
+                };
+            })),
+            // (&["name"][..], Box::new(|val: MicropubPropertyValue| {
+            //     match val {
+            //         MicropubPropertyValue::Values(vals) => {
+            //             vals.first().iter().for_each(|s| {
+            //                 builder.set_name((**s).clone())
+            //             });
+            //         }
+            //         _ => eprinln!("unexpected name type")
+            //     };
+            // })),
             // ("category", |s| builder.set_content(s)),
         ];
 
@@ -373,5 +414,26 @@ mod test {
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
+    }
+
+    // #[test]
+    // fn micropub_json_decode_food_entry() {
+    //     b"{\"type\":[\"h-entry\"],\"properties\":{\"published\":[\"2020-10-03T14:10:06-05:00\"],\"created\":[\"2020-10-03T14:10:06-05:00\"],\"summary\":[\"Just drank: Earl Grey Tea\"],\"drank\":[{\"type\":[\"h-food\"],\"properties\":{\"name\":\"Earl Grey Tea\"}}]}}"
+    // }
+
+    #[test]
+    fn micropub_json_decode_post_entry_from_quill() {
+        let bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"name\":[\"Testing quill\"],\"content\":[{\"html\":\"<p>This is a test of https:\\/\\/quill.p3k.io<\\/p>\\n<p>\\n  hello hello\\n  <br \\/>\\n<\\/p>\"}],\"category\":[\"test\"],\"mp-slug\":[\"quill-test\"]}}";
+        let form = MicropubForm {
+            access_token: None,
+            // name: Some("Testing quill".into()),
+            name: None,
+            h: "entry".into(),
+            content: "<p>This is a test of https://quill.p3k.io</p>\n<p>\n  hello hello\n  <br />\n</p>".into(),
+            // category: vec!["test".into()],
+            category: vec![],
+        };
+
+        assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
     }
 }
