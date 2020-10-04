@@ -48,6 +48,18 @@ struct MicropubJSONCreate {
     properties: MicropubProperties,
 }
 
+// TODO:
+// - quill appears to include 'published' and 'created' properties
+// - mp-slug is a valid way to send a predefined slug
+// - food entries seem... complex. See food entry test case below
+//   e.g. a 'drank' property may have a whole sub type/properties object...
+//   I'd really like to support recording this for e.g. tea blogging but this might require a
+//   larger refactor.
+// - bookmark might have a bookmark-of property (possibly more likely to be a form encoded than
+//   json encoded entry
+// - review types (https://quill.p3k.io/review)
+//   quill doesn't appeart to include categories in the form but that would be nice to support
+//   adding a test case below, commented out
 #[derive(Debug, Deserialize)]
 struct MicropubFormBuilder {
     access_token: Option<String>,
@@ -429,6 +441,11 @@ mod test {
     // #[test]
     // fn micropub_json_decode_food_entry() {
     //     b"{\"type\":[\"h-entry\"],\"properties\":{\"published\":[\"2020-10-03T14:10:06-05:00\"],\"created\":[\"2020-10-03T14:10:06-05:00\"],\"summary\":[\"Just drank: Earl Grey Tea\"],\"drank\":[{\"type\":[\"h-food\"],\"properties\":{\"name\":\"Earl Grey Tea\"}}]}}"
+    // }
+
+    // #[test]
+    // fn micropub_json_decode_review() {
+    //     b"{\"type\":[\"h-review\"],\"properties\":{\"item\":[{\"type\":[\"h-product\"],\"properties\":{\"name\":[\"Something something something tea\"],\"url\":[\"\"]}}],\"rating\":[3],\"content\":[{\"html\":\"test review\"}],\"summary\":[\"it's ok\"]}}";
     // }
 
     #[test]
