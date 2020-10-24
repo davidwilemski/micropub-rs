@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use chrono::Local;
 use diesel::prelude::*;
 use diesel::r2d2;
 use reqwest;
@@ -337,7 +338,7 @@ impl MicropubHandler {
             return Err(reject::custom(NotAuthorized));
         }
 
-        let slug = post_util::get_slug(form.name.as_deref(), &form.content);
+        let slug = post_util::get_slug(form.name.as_deref(), Local::now);
 
         let new_post = NewPost {
             name: form.name.as_deref(),

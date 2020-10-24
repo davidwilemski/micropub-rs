@@ -1,42 +1,58 @@
-use url::form_urlencoded;
+use chrono::{DateTime, Local};
 
-pub fn get_slug(name: Option<&str>, content: &str) -> String {
-    let unencoded_slug = match name {
-        Some(n) => n,
-        // TODO might want to use a date/time instead for not slugs in the future?
-        // maybe %Y%m%d-%H%M%S
+fn get_first_n(n: usize, input: &str) -> String {
+    input.to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).take(n).collect()
+}
+
+pub fn get_slug(name: Option<&str>, now_fn: fn() -> DateTime<Local>) -> String {
+    let slug = match name {
+        Some(n) => {
+            let now = now_fn().format("%Y/%m/%d");
+            format!("{}/{}", now, get_first_n(32, n))
+        },
         None => {
-            let end = content.len().min(32);
-            &content[0..end]
+            let now = now_fn().format("%Y/%m/%d/%H%M%S");
+            format!("{}", now)
         }
     };
 
-    form_urlencoded::byte_serialize(unencoded_slug.replace(" ", "-").as_bytes()).collect()
+    slug.replace(" ", "-")
 }
 
 #[cfg(test)]
 mod test {
     use super::get_slug;
 
+    use chrono::{DateTime, Local, TimeZone};
+
+    fn now() -> DateTime<Local> {
+        Local.timestamp(1603571553i64, 0u32)
+    }
+
     #[test]
     fn it_uses_name_if_name_exists() {
-        assert_eq!(get_slug(Some("testing"), "nothing"), "testing");
+        assert_eq!(get_slug(Some("testing"), now), "2020/10/24/testing");
     }
 
     #[test]
     fn it_replaces_spaces_in_name_with_hyphens() {
-        assert_eq!(get_slug(Some("testing stuff"), "nothing"), "testing-stuff");
+        assert_eq!(get_slug(Some("testing stuff"), now), "2020/10/24/testing-stuff");
+    }
+
+    #[test]
+    fn it_removes_non_alpha_numeric_chars_and_truncates() {
+        assert_eq!(
+            get_slug(Some("testing stuff! This is a really long title."), now),
+            "2020/10/24/testing-stuff-this-is-a-really-l"
+        );
     }
 
     #[test]
     fn it_uses_content_if_no_name() {
-        assert_eq!(get_slug(None, "nothing"), "nothing");
+        assert_eq!(get_slug(None, now), "2020/10/24/153233");
     }
     #[test]
     fn it_truncates_content_for_slug() {
-        assert_eq!(
-            get_slug(None, "nothing: this is a rather long title"),
-            "nothing%3A-this-is-a-rather-long-t"
-        );
+        assert_eq!( get_slug(None, now), "2020/10/24/153233");
     }
 }
