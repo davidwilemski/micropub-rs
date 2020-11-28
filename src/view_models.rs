@@ -30,15 +30,15 @@ where
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Post {
-    slug: String,
-    entry_type: String,
-    title: Option<String>,
-    content: Option<String>,
-    client_id: Option<String>,
-    published: String,
-    updated: String,
-    tags: Vec<String>,
-    date: Date,
+    pub slug: String,
+    pub entry_type: String,
+    pub title: Option<String>,
+    pub content: Option<String>,
+    pub client_id: Option<String>,
+    pub published: String,
+    pub updated: String,
+    pub tags: Vec<String>,
+    pub date: Date,
 }
 
 impl Post {

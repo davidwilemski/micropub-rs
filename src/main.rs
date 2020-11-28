@@ -80,6 +80,10 @@ async fn main() -> Result<(), anyhow::Error> {
     base_ctx.insert("SITENAME", "David's Blog");
     base_ctx.insert("SITEURL", "");
     base_ctx.insert("MENUITEMS", crate::MENU_ITEMS);
+    base_ctx.insert("FEED_DOMAIN", "");
+    base_ctx.insert("FEED_ALL_ATOM", "feeds/all.atom.xml");
+
+    let atom_ctx = base_ctx.clone();
 
     let templates = Arc::new(templates::Templates::new(tera, base_ctx));
     let micropub_handler = Arc::new(handlers::MicropubHandler::new(dbpool.clone()));
@@ -90,6 +94,10 @@ async fn main() -> Result<(), anyhow::Error> {
     let archive_handler = Arc::new(handlers::ArchiveHandler::new(
         dbpool.clone(),
         templates.clone(),
+    ));
+    let atom_handler = Arc::new(handlers::AtomHandler::new(
+        dbpool.clone(),
+        Arc::new(crate::templates::Templates::atom_default(atom_ctx)),
     ));
     let index_handler = Arc::new(handlers::IndexHandler::new(
         dbpool.clone(),
@@ -121,14 +129,25 @@ async fn main() -> Result<(), anyhow::Error> {
         async move { h.get().await }
     });
 
+    let atom = warp::path!("feeds" / "all.atom.xml")
+        .and(warp::get())
+        .and_then(move || {
+            let h = atom_handler.clone();
+            async move { h.get().await }
+        });
+
     let index = warp::path::end().and(warp::get()).and_then(move || {
         let h = index_handler.clone();
         async move { h.get().await }
     });
 
-    warp::serve(index.or(micropub.or(archives.or(fetch_post.or(warp::path("theme").and(static_files))))))
-        .run(([127, 0, 0, 1], 3030))
-        .await;
+    warp::serve(
+        index.or(micropub.or(archives.or(fetch_post.or(atom
+            .or(warp::path("theme").and(static_files))
+            .or(warp::any().map(|| "404 Not Found")))))),
+    )
+    .run(([127, 0, 0, 1], 3030))
+    .await;
 
     Ok(())
 }
