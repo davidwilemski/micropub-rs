@@ -228,7 +228,7 @@ impl MicropubForm {
             match &*k {
                 "access_token" => builder.set_access_token(v.into_owned()),
                 "h" => builder.set_h(v.into_owned()),
-                "content" => builder.set_content(v.into_owned()),
+                "content" | "content[html]" => builder.set_content(v.into_owned()),
                 "category" | "category[]" => builder.add_category(v.into_owned()),
                 "name" => builder.set_name(v.into_owned()),
                 _ => (),
@@ -434,6 +434,20 @@ mod test {
             h: "entry".into(),
             content: "this is only a test of micropub".into(),
             category: vec![],
+        };
+
+        assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
+    }
+
+    #[test]
+    fn micropub_form_decode_content_html() {
+        let qs = b"h=entry&name=Test%20Article%20from%20Micropublish.net&content[html]=%3Cdiv%3EThis%20is%20a%20test%20article%3Cbr%3E%3Cbr%3E%3Cstrong%3EIt%20has%20formatting%3Cbr%3E%3Cbr%3E%3C%2Fstrong%3EIt%20can%20%3Ca%20href%3D%22https%3A%2F%2Fdavidwilemski.com%22%3Eembed%20links%3C%2Fa%3E%3C%2Fdiv%3E&category=test&post-status=published&mp-slug=test-article-micropublish-net";
+        let form = MicropubForm {
+            access_token: None,
+            name: Some("Test Article from Micropublish.net".into()),
+            h: "entry".into(),
+            content: "<div>This is a test article<br><br><strong>It has formatting<br><br></strong>It can <a href=\"https://davidwilemski.com\">embed links</a></div>".into(),
+            category: vec!["test".into()],
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
