@@ -117,11 +117,15 @@ async fn main() -> Result<(), anyhow::Error> {
         })
         .recover(handle_rejection);
 
-    let fetch_post = warp::path::param()
-        .and(warp::get())
-        .and_then(move |slug: String| {
+    let fetch_post = warp::any()
+        .and(warp::path::full())
+        .map(move |path: warp::path::FullPath| {
+            path.as_str().to_string()
+        }).and_then(move |path: String| {
+            //full path includes leading /, remove that
+            let slug = path.as_str().strip_prefix('/').map(|s| s.to_string());
             let h = fetch_handler.clone();
-            async move { h.fetch_post(&slug).await }
+            async move { h.fetch_post(&slug.unwrap_or(path)).await }
         });
 
     let archives = warp::path!("archives").and(warp::get()).and_then(move || {
@@ -142,9 +146,9 @@ async fn main() -> Result<(), anyhow::Error> {
     });
 
     warp::serve(
-        index.or(micropub.or(archives.or(fetch_post.or(atom
+        index.or(micropub.or(archives.or(atom
             .or(warp::path("theme").and(static_files))
-            .or(warp::any().map(|| "404 Not Found")))))),
+            .or(fetch_post)))),
     )
     .run(([127, 0, 0, 1], 3030))
     .await;

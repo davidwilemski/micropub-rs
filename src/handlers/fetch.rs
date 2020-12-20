@@ -26,6 +26,7 @@ impl FetchHandler {
     }
 
     pub async fn fetch_post(&self, url_slug: &str) -> Result<impl warp::Reply, Rejection> {
+        eprintln!("fetch_post url_slug:{:?}", url_slug);
         let conn = self.dbpool.get().map_err(|e| {
             println!("{:?}", e);
             reject::custom(DBError)
