@@ -17,6 +17,17 @@ type AllColumns = (
     posts::updated_at,
 );
 
+const ALL_COLUMNS: AllColumns = (
+    posts::id,
+    posts::slug,
+    posts::entry_type,
+    posts::name,
+    posts::content,
+    posts::client_id,
+    posts::created_at,
+    posts::updated_at,
+);
+
 type PostSqlType = <AllColumns as Expression>::SqlType;
 type WithSlug<'a> = diesel::dsl::Eq<posts::slug, &'a str>;
 type BySlug<'a> = diesel::dsl::Filter<Post, WithSlug<'a>>;
