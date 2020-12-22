@@ -1,4 +1,4 @@
-use diesel::expression::{AsExpression, Expression};
+use diesel::expression::Expression;
 use diesel::prelude::*;
 use diesel::sqlite::Sqlite;
 use diesel::Queryable;

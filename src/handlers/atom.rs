@@ -3,7 +3,7 @@ use std::sync::Arc;
 use diesel::prelude::*;
 use diesel::r2d2;
 use itertools::Itertools;
-use warp::{http::Response, reject, Filter, Rejection};
+use warp::{http::Response, reject, Rejection};
 
 use crate::errors::*;
 use crate::models::Post;
