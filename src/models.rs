@@ -33,6 +33,12 @@ type WithSlug<'a> = diesel::dsl::Eq<posts::slug, &'a str>;
 type BySlug<'a> = diesel::dsl::Filter<Post, WithSlug<'a>>;
 type BoxedPostsQuery<'a> = posts::BoxedQuery<'a, Sqlite, PostSqlType>;
 
+fn posts_for_category(tag: &str) -> categories::BoxedQuery<'_, Sqlite, diesel::sql_types::Integer> {
+    use crate::schema::categories::dsl::*;
+    categories.select(post_id).filter(category.eq(tag)).into_boxed()
+
+}
+
 #[derive(Debug, Queryable, Serialize)]
 pub struct Post {
     pub id: i32,
@@ -54,6 +60,14 @@ impl Post {
     pub fn all<'a>() -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
         posts.order_by(created_at).into_boxed()
+    }
+
+    pub fn by_tag<'a>(tag: &'a str) -> BoxedPostsQuery<'a> {
+        use crate::schema::posts::dsl::*;
+        posts
+            .filter(id.eq_any(posts_for_category(tag)))
+            .order_by(created_at)
+            .into_boxed()
     }
 
     pub fn latest<'a>() -> BoxedPostsQuery<'a> {

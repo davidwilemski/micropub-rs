@@ -25,14 +25,14 @@ impl ArchiveHandler {
         }
     }
 
-    pub async fn get(&self) -> Result<impl warp::Reply, Rejection> {
+    pub async fn get(&self, tag: Option<&str>) -> Result<impl warp::Reply, Rejection> {
         let conn = self.dbpool.get().map_err(|e| {
             println!("{:?}", e);
             reject::custom(DBError)
         })?;
 
         let posts =
-            Post::all()
+            tag.map(|t| Post::by_tag(t)).unwrap_or(Post::all())
                 .load::<Post>(&conn)
                 .map_err(|e: diesel::result::Error| match e {
                     diesel::result::Error::NotFound => warp::reject::not_found(),
@@ -78,7 +78,8 @@ impl ArchiveHandler {
 
         let template = self.templates
             .add_context("articles", &posts_views)
-            .add_context("dates", &posts_views);
+            .add_context("dates", &posts_views)
+            .add_context("tag", &tag);
         let page = template.render("archives.html").map_err(|e| {
             println!("{:?}", e);
             reject::custom(TemplateError)

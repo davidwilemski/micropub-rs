@@ -95,6 +95,10 @@ async fn main() -> Result<(), anyhow::Error> {
         dbpool.clone(),
         templates.clone(),
     ));
+    let tag_archive_handler = Arc::new(handlers::ArchiveHandler::new(
+        dbpool.clone(),
+        templates.clone(),
+    ));
     let atom_handler = Arc::new(handlers::AtomHandler::new(
         dbpool.clone(),
         Arc::new(crate::templates::Templates::atom_default(atom_ctx)),
@@ -130,7 +134,12 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let archives = warp::path!("archives").and(warp::get()).and_then(move || {
         let h = archive_handler.clone();
-        async move { h.get().await }
+        async move { h.get(None).await }
+    });
+
+    let tag_archives = warp::path!("tag" / String).and(warp::get()).and_then(move |tag: String| {
+        let h = tag_archive_handler.clone();
+        async move { h.get(Some(tag.as_str())).await }
     });
 
     let atom = warp::path!("feeds" / "all.atom.xml")
@@ -146,9 +155,9 @@ async fn main() -> Result<(), anyhow::Error> {
     });
 
     warp::serve(
-        index.or(micropub.or(archives.or(atom
+        index.or(micropub.or(tag_archives.or(archives.or(atom
             .or(warp::path("theme").and(static_files))
-            .or(fetch_post)))),
+            .or(fetch_post))))),
     )
     .run(([127, 0, 0, 1], 3030))
     .await;
