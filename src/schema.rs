@@ -16,6 +16,7 @@ table! {
         client_id -> Nullable<Text>,
         created_at -> Text,
         updated_at -> Text,
+        content_type -> Nullable<Text>,
     }
 }
 
