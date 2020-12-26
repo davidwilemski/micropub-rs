@@ -122,15 +122,12 @@ impl MicropubFormBuilder {
                         // we may get {"content": [{"html": "blah"}]}
                         // see test case
                         vecmap.first().iter().for_each(|map| {
-                            if let Some(content) = map.get("html") {
-                                match content {
-                                    MicropubPropertyValue::Value(v) => {
-                                        builder.set_content_type("html".into());
-                                        builder.set_content(v.clone());
-                                    },
-                                    _ => ()
-
-                                }
+                            if let Some(MicropubPropertyValue::Value(content)) = map.get("html") {
+                                builder.set_content_type("html".into());
+                                builder.set_content(content.clone());
+                            } else if let Some(MicropubPropertyValue::Value(content)) = map.get("markdown") {
+                                builder.set_content_type("markdown".into());
+                                builder.set_content(content.clone());
                             }
                         });
                     }
@@ -498,6 +495,21 @@ mod test {
             content: "<p>This is a test of https://quill.p3k.io</p>\n<p>\n  hello hello\n  <br />\n</p>".into(),
             content_type: Some("html".into()),
             category: vec!["test".into()],
+        };
+
+        assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
+    }
+
+    #[test]
+    fn micropub_json_decode_post_entry_markdown_format() {
+        let bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"name\":[\"Testing markdown\"],\"content\":[{\"markdown\":\"This _is_ a *markdown* document. \\n # Header 1 \\n normal text\"}],\"category\":[\"markdown\"],\"mp-slug\":[\"markdown-test\"]}}";
+        let form = MicropubForm {
+            access_token: None,
+            name: Some("Testing markdown".into()),
+            h: "entry".into(),
+            content: "This _is_ a *markdown* document. \n # Header 1 \n normal text".into(),
+            content_type: Some("markdown".into()),
+            category: vec!["markdown".into()],
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
