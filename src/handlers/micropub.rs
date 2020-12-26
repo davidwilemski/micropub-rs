@@ -66,6 +66,7 @@ struct MicropubFormBuilder {
     access_token: Option<String>,
     h: Option<String>,
     content: Option<String>,
+    content_type: Option<String>,
     category: Option<Vec<String>>,
     name: Option<String>,
 }
@@ -94,6 +95,7 @@ impl MicropubFormBuilder {
             access_token: None,
             h: None,
             content: None,
+            content_type: None,
             category: None,
             name: None,
         }
@@ -120,13 +122,16 @@ impl MicropubFormBuilder {
                         // we may get {"content": [{"html": "blah"}]}
                         // see test case
                         vecmap.first().iter().for_each(|map| {
-                            map.get("html").map(|content| {
+                            if let Some(content) = map.get("html") {
                                 match content {
-                                    MicropubPropertyValue::Value(v) => builder.set_content(v.clone()),
+                                    MicropubPropertyValue::Value(v) => {
+                                        builder.set_content_type("html".into());
+                                        builder.set_content(v.clone());
+                                    },
                                     _ => ()
 
                                 }
-                            });
+                            }
                         });
                     }
                     MicropubPropertyValue::Value(val) => {
@@ -169,6 +174,7 @@ impl MicropubFormBuilder {
             access_token: self.access_token,
             h: self.h.ok_or(MicropubFormError::MissingField("h".into()))?,
             content: self.content.ok_or(MicropubFormError::MissingField("content".into()))?,
+            content_type: self.content_type,
             category: self.category.unwrap_or(vec![]),
             name: self.name,
         })
@@ -184,6 +190,10 @@ impl MicropubFormBuilder {
 
     fn set_content(&mut self, val: String) {
         self.content = Some(val);
+    }
+
+    fn set_content_type(&mut self, val: String) {
+        self.content_type = Some(val)
     }
 
     fn add_category(&mut self, val: String) {
@@ -211,6 +221,11 @@ struct MicropubForm {
     /// Text content of the entry
     content: String,
 
+    /// Content type of the entry. None for plain text / default, "html" for already rendered html,
+    /// or "markdown" for content that should be rendered as html from markdown at post render
+    /// time.
+    content_type: Option<String>,
+
     /// Categories (tags) for the entry
     category: Vec<String>,
 
@@ -228,7 +243,12 @@ impl MicropubForm {
             match &*k {
                 "access_token" => builder.set_access_token(v.into_owned()),
                 "h" => builder.set_h(v.into_owned()),
-                "content" | "content[html]" => builder.set_content(v.into_owned()),
+                content_key @ "content" | content_key @ "content[html]" => {
+                    builder.set_content(v.into_owned());
+                    if content_key == "content[html]" {
+                        builder.set_content_type("html".into())
+                    }
+                },
                 "category" | "category[]" => builder.add_category(v.into_owned()),
                 "name" => builder.set_name(v.into_owned()),
                 _ => (),
@@ -405,6 +425,7 @@ mod test {
             name: None,
             h: "entry".into(),
             content: "this is only a test of micropub".into(),
+            content_type: None,
             category: vec!["test".into(), "micropub".into()],
         };
 
@@ -419,6 +440,7 @@ mod test {
             name: None,
             h: "entry".into(),
             content: "this is only a test of micropub".into(),
+            content_type: None,
             category: vec!["micropub".into()],
         };
 
@@ -433,6 +455,7 @@ mod test {
             name: None,
             h: "entry".into(),
             content: "this is only a test of micropub".into(),
+            content_type: None,
             category: vec![],
         };
 
@@ -447,6 +470,7 @@ mod test {
             name: Some("Test Article from Micropublish.net".into()),
             h: "entry".into(),
             content: "<div>This is a test article<br><br><strong>It has formatting<br><br></strong>It can <a href=\"https://davidwilemski.com\">embed links</a></div>".into(),
+            content_type: Some("html".into()),
             category: vec!["test".into()],
         };
 
@@ -471,6 +495,7 @@ mod test {
             name: Some("Testing quill".into()),
             h: "entry".into(),
             content: "<p>This is a test of https://quill.p3k.io</p>\n<p>\n  hello hello\n  <br />\n</p>".into(),
+            content_type: Some("html".into()),
             category: vec!["test".into()],
         };
 
