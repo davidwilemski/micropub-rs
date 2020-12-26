@@ -89,6 +89,7 @@ pub struct NewPost<'a> {
     pub entry_type: &'a str,
     pub name: Option<&'a str>,
     pub content: Option<&'a str>,
+    pub content_type: Option<&'a str>,
     pub client_id: Option<&'a str>,
 }
 

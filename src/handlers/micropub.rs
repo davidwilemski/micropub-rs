@@ -365,6 +365,7 @@ impl MicropubHandler {
             slug: &slug, // TODO support inputting slug as part of the Micropub document/form
             entry_type: &form.h,
             content: Some(&form.content),
+            content_type: form.content_type.as_ref().map(|s| s.as_ref()),
             client_id: Some(&validate_response.client_id),
         };
 
