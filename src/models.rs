@@ -15,6 +15,7 @@ type AllColumns = (
     posts::client_id,
     posts::created_at,
     posts::updated_at,
+    posts::content_type,
 );
 
 const ALL_COLUMNS: AllColumns = (
@@ -26,6 +27,7 @@ const ALL_COLUMNS: AllColumns = (
     posts::client_id,
     posts::created_at,
     posts::updated_at,
+    posts::content_type,
 );
 
 type PostSqlType = <AllColumns as Expression>::SqlType;
@@ -49,6 +51,7 @@ pub struct Post {
     pub client_id: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub content_type: Option<String>,
 }
 
 impl Post {
@@ -59,7 +62,7 @@ impl Post {
 
     pub fn all<'a>() -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
-        posts.order_by(created_at).into_boxed()
+        posts.select(ALL_COLUMNS).order_by(created_at).into_boxed()
     }
 
     pub fn by_tag<'a>(tag: &'a str) -> BoxedPostsQuery<'a> {
