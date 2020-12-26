@@ -1,3 +1,4 @@
+use markdown;
 use serde::{Deserialize, Serialize};
 
 use crate::models::Post as DBPost;
@@ -44,11 +45,16 @@ pub struct Post {
 
 impl Post {
     pub fn new_from(post: DBPost, categories: Vec<String>, date: Date) -> Self {
+        let content = match post.content_type.as_deref() {
+            Some("markdown") => post.content.as_deref().map(markdown::to_html),
+            _ => post.content,
+        };
+
         Post {
             slug: post.slug,
             entry_type: post.entry_type,
             title: post.name,
-            content: post.content,
+            content: content,
             content_type: post.content_type,
             client_id: post.client_id,
             published: post.created_at,
