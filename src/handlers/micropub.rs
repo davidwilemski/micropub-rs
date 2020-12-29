@@ -334,7 +334,7 @@ impl MicropubHandler {
     /// Given an content type and body bytes, parse body and create post entry in the database.
     ///
     /// Returns slug string if successful
-    async fn create_post(
+    pub async fn create_post(
         &self,
         content_type: Option<String>,
         body: bytes::Bytes,
