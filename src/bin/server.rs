@@ -1,7 +1,4 @@
 #[macro_use]
-extern crate diesel;
-
-#[macro_use]
 extern crate anyhow;
 
 use std::env;
@@ -12,24 +9,10 @@ use diesel::r2d2;
 use warp::http::StatusCode;
 use warp::{Filter, Rejection};
 
-mod errors;
-mod handlers;
-mod models;
-mod post_util;
-mod schema;
-mod templates;
-mod view_models;
-
-// TODO make these configurable via command line, environment, or config file?
-const MAX_CONTENT_LENGTH: u64 = 1024 * 1024 * 50; // 50 megabytes
-const AUTH_TOKEN_ENDPOINT: &str = "https://tokens.indieauth.com/token";
-const HOST_WEBSITE: &str = "https://davidwilemski.com/";
-const MENU_ITEMS: &[(&str, &str)] = &[("Archive", "/archives")];
-const TEMPLATE_DIR_VAR: &str = "MICROPUB_RS_TEMPLATE_DIR";
-const SOCIAL: &str = "https://github.com/davidwilemski";
-const MICROPUB_ENDPOINT: &str = "/micropub";
-const AUTH_ENDPOINT: &str = "https://indieauth.com/auth";
-const TOKEN_ENDPOINT: &str = "https://tokens.indieauth.com/token";
+use micropub_rs::constants::*;
+use micropub_rs::errors;
+use micropub_rs::handlers;
+use micropub_rs::templates;
 
 fn new_dbconn_pool(
     db_file: &str,
