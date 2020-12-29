@@ -110,7 +110,7 @@ impl MicropubFormBuilder {
             builder.set_h(entry_type.strip_prefix("h-").unwrap_or(&entry_type).into())
         }
 
-        let prop_setter_pairs: Vec<(&[&str], Box<Fn(&mut MicropubFormBuilder, MicropubPropertyValue)>)> = vec![
+        let prop_setter_pairs: Vec<(&[&str], Box<dyn Fn(&mut MicropubFormBuilder, MicropubPropertyValue)>)> = vec![
             (&["content", "content[html]"][..], Box::new(|builder: &mut MicropubFormBuilder, val: MicropubPropertyValue| {
                 match val {
                     MicropubPropertyValue::Values(vals) => {
