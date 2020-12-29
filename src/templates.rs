@@ -21,7 +21,9 @@ impl Templates {
 
     pub fn atom_default(base_ctx: TeraContext) -> Self {
         let atom_template = indoc! {r#"
-        <feed>
+        <?xml version="1.0" encoding="utf-8"?>
+
+        <feed xmlns="http://www.w3.org/2005/Atom">
         <title>David's Blog</title>
         <link href="https://davidwilemski.com/" rel="alternate"/>
         <link href="https://davidwilemski.com/feeds/all.atom.xml" rel="self"/>
