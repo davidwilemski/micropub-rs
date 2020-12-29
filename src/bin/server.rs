@@ -4,8 +4,6 @@ extern crate anyhow;
 use std::env;
 use std::sync::Arc;
 
-use diesel::prelude::*;
-use diesel::r2d2;
 use warp::http::StatusCode;
 use warp::{Filter, Rejection};
 
@@ -13,13 +11,6 @@ use micropub_rs::constants::*;
 use micropub_rs::errors;
 use micropub_rs::handlers;
 use micropub_rs::templates;
-
-fn new_dbconn_pool(
-    db_file: &str,
-) -> Result<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>, anyhow::Error> {
-    let manager = r2d2::ConnectionManager::<SqliteConnection>::new(db_file);
-    Ok(r2d2::Pool::new(manager)?)
-}
 
 async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection> {
     // TODO JSON errors?
@@ -51,7 +42,7 @@ async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection>
 async fn main() -> Result<(), anyhow::Error> {
     let dbfile = env::var("DATABASE_URL")?;
     let template_dir = env::var(TEMPLATE_DIR_VAR)?;
-    let dbpool = Arc::new(new_dbconn_pool(&dbfile)?);
+    let dbpool = Arc::new(micropub_rs::new_dbconn_pool(&dbfile)?);
     let template_pattern = std::path::Path::new(&template_dir).join("templates/**/*.html");
     let tera = Arc::new(tera::Tera::new(
         template_pattern

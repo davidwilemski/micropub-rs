@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate diesel;
 
+use diesel::r2d2;
+use diesel::prelude::SqliteConnection;
+
 pub mod constants;
 pub mod errors;
 pub mod handlers;
@@ -11,3 +14,10 @@ pub mod templates;
 pub mod view_models;
 
 pub use crate::constants::*;
+
+pub fn new_dbconn_pool(
+    db_file: &str,
+) -> Result<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>, anyhow::Error> {
+    let manager = r2d2::ConnectionManager::<SqliteConnection>::new(db_file);
+    Ok(r2d2::Pool::new(manager)?)
+}
