@@ -91,6 +91,8 @@ pub struct NewPost<'a> {
     pub content: Option<&'a str>,
     pub content_type: Option<&'a str>,
     pub client_id: Option<&'a str>,
+    pub created_at: Option<&'a str>,
+    pub updated_at: Option<&'a str>,
 }
 
 #[derive(Debug, Insertable)]

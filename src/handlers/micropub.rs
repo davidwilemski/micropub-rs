@@ -69,6 +69,8 @@ struct MicropubFormBuilder {
     content_type: Option<String>,
     category: Option<Vec<String>>,
     name: Option<String>,
+    created_at: Option<String>,
+    updated_at: Option<String>,
 }
 
 fn set_from_prop<F>(builder: &mut MicropubFormBuilder, setter: &mut F, props: &MicropubProperties, prop: &str) -> bool
@@ -98,6 +100,8 @@ impl MicropubFormBuilder {
             content_type: None,
             category: None,
             name: None,
+            created_at: None,
+            updated_at: None,
         }
     }
 
@@ -157,6 +161,18 @@ impl MicropubFormBuilder {
                     _ => eprintln!("unexpected category type")
                 };
             })),
+            (&["published"][..], Box::new(|builder: &mut MicropubFormBuilder, props: MicropubPropertyValue| {
+                match props {
+                    MicropubPropertyValue::Values(dates) => {
+                        if dates.len() != 1 {
+                            eprintln!("unexpected publishe dates length");
+                            return;
+                        }
+                        builder.set_created_at(dates[0].clone())
+                    },
+                    _ => eprintln!("unexpected category type"),
+                }
+            })),
         ];
 
         for (props, setter) in prop_setter_pairs {
@@ -174,6 +190,8 @@ impl MicropubFormBuilder {
             content_type: self.content_type,
             category: self.category.unwrap_or(vec![]),
             name: self.name,
+            created_at: self.created_at,
+            updated_at: self.updated_at,
         })
     }
 
@@ -204,6 +222,10 @@ impl MicropubFormBuilder {
     fn set_name(&mut self, val: String) {
         self.name = Some(val);
     }
+
+    fn set_created_at(&mut self, val: String) {
+        self.created_at = Some(val)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -229,6 +251,12 @@ struct MicropubForm {
     /// Name/Title of the h-entry (article/blog post).
     /// Note that h-notes do not contain a name.
     name: Option<String>,
+
+    /// Created and Updated at datetimes of the post
+    /// The database schema has a default of the current time but this can also be provided at post
+    /// time.
+    created_at: Option<String>,
+    updated_at: Option<String>,
     // TODO: support additional fields and properties
 }
 
@@ -366,6 +394,8 @@ impl MicropubHandler {
             content: Some(&form.content),
             content_type: form.content_type.as_ref().map(|s| s.as_ref()),
             client_id: Some(client_id),
+            created_at: form.created_at.as_deref(),
+            updated_at: form.updated_at.as_deref(),
         };
 
         let conn = self.dbpool.get().map_err(|e| {
@@ -452,6 +482,8 @@ mod test {
             content: "this is only a test of micropub".into(),
             content_type: None,
             category: vec!["test".into(), "micropub".into()],
+            created_at: None,
+            updated_at: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -467,6 +499,8 @@ mod test {
             content: "this is only a test of micropub".into(),
             content_type: None,
             category: vec!["micropub".into()],
+            created_at: None,
+            updated_at: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -482,6 +516,8 @@ mod test {
             content: "this is only a test of micropub".into(),
             content_type: None,
             category: vec![],
+            created_at: None,
+            updated_at: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -497,6 +533,8 @@ mod test {
             content: "<div>This is a test article<br><br><strong>It has formatting<br><br></strong>It can <a href=\"https://davidwilemski.com\">embed links</a></div>".into(),
             content_type: Some("html".into()),
             category: vec!["test".into()],
+            created_at: None,
+            updated_at: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -522,6 +560,8 @@ mod test {
             content: "<p>This is a test of https://quill.p3k.io</p>\n<p>\n  hello hello\n  <br />\n</p>".into(),
             content_type: Some("html".into()),
             category: vec!["test".into()],
+            created_at: None,
+            updated_at: None,
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
@@ -537,6 +577,25 @@ mod test {
             content: "This _is_ a *markdown* document. \n # Header 1 \n normal text".into(),
             content_type: Some("markdown".into()),
             category: vec!["markdown".into()],
+            created_at: None,
+            updated_at: None,
+        };
+
+        assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
+    }
+
+    #[test]
+    fn micropub_json_decode_handles_published_property() {
+        let bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"name\":[\"Testing published\"],\"content\":[{\"html\":\"content!\"}],\"category\":[\"publish-date\"],\"mp-slug\":[\"publish-date-slug\"], \"published\":[\"2020-04-04 15:30:00\"]}}";
+        let form = MicropubForm {
+            access_token: None,
+            name: Some("Testing published".into()),
+            h: "entry".into(),
+            content: "content!".into(),
+            content_type: Some("html".into()),
+            category: vec!["publish-date".into()],
+            created_at: Some("2020-04-04 15:30:00".into()),
+            updated_at: None,
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
