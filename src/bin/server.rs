@@ -91,7 +91,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .and(warp::body::bytes())
         .and_then(move |ct, a, body| {
             let h = micropub_handler.clone();
-            async move { h.verify_auth(ct, a, body).await }
+            async move { h.handle_post(ct, a, body).await }
         })
         .recover(handle_rejection);
 

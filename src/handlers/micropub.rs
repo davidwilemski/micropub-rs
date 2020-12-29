@@ -299,13 +299,47 @@ impl MicropubHandler {
         handler
     }
 
-    pub async fn verify_auth(
+    pub async fn handle_post(
         &self,
         content_type: Option<String>,
         auth: String,
         body: bytes::Bytes,
     ) -> Result<impl warp::Reply, Rejection> {
         println!("body: {:?}", &body.slice(..));
+
+        let validate_response = self.verify_auth(&auth).await?;
+
+        if validate_response.me != crate::HOST_WEBSITE {
+            return Err(reject::custom(NotAuthorized));
+        }
+
+        let slug = self.create_post(
+            content_type,
+            body,
+            validate_response.client_id.as_str()
+        ).await?;
+
+        Ok(
+            warp::reply::with_header(
+                warp::reply::with_status(
+                    warp::reply::reply(),
+                    StatusCode::CREATED,
+                ),
+                "Location",
+                format!("https://davidwilemski.com/{}", slug)
+            )
+        )
+    }
+
+    /// Given an content type and body bytes, parse body and create post entry in the database.
+    ///
+    /// Returns slug string if successful
+    async fn create_post(
+        &self,
+        content_type: Option<String>,
+        body: bytes::Bytes,
+        client_id: &str,
+    ) -> Result<String, Rejection> {
         let ct = content_type.unwrap_or("x-www-form-url-encoded".into());
         let form = match ct.to_lowercase().as_str() {
             "application/json" => {
@@ -323,38 +357,6 @@ impl MicropubHandler {
             }
         };
 
-        println!("auth: {:?} \n form: {:?}", auth, form);
-
-        let r = self
-            .http_client
-            .get(crate::AUTH_TOKEN_ENDPOINT)
-            .header("accept", "application/json")
-            .header("Authorization", auth)
-            .send()
-            .await;
-
-        let validate_response: TokenValidateResponse = r
-            .map_err(|e| {
-                println!("{:?}", e);
-                reject::custom(HTTPClientError)
-            })?
-            .json()
-            .await
-            .map_err(|e| {
-                println!("{:?}", e);
-                reject::custom(ValidateResponseDeserializeError)
-            })?;
-
-        println!(
-            "validate_resp: {:?}, scopes: {:?}",
-            validate_response,
-            validate_response.scopes()
-        );
-
-        if validate_response.me != crate::HOST_WEBSITE {
-            return Err(reject::custom(NotAuthorized));
-        }
-
         let slug = post_util::get_slug(form.name.as_deref(), Local::now);
 
         let new_post = NewPost {
@@ -363,7 +365,7 @@ impl MicropubHandler {
             entry_type: &form.h,
             content: Some(&form.content),
             content_type: form.content_type.as_ref().map(|s| s.as_ref()),
-            client_id: Some(&validate_response.client_id),
+            client_id: Some(client_id),
         };
 
         let conn = self.dbpool.get().map_err(|e| {
@@ -398,16 +400,41 @@ impl MicropubHandler {
             reject::custom(DBError)
         })?;
 
-        Ok(
-            warp::reply::with_header(
-                warp::reply::with_status(
-                    warp::reply::reply(),
-                    StatusCode::CREATED,
-                ),
-                "Location",
-                format!("https://davidwilemski.com/{}", slug)
-            )
-        )
+        Ok(slug)
+    }
+
+    async fn verify_auth(
+        &self,
+        auth: &str,
+    ) -> Result<TokenValidateResponse, Rejection> {
+
+        let r = self
+            .http_client
+            .get(crate::AUTH_TOKEN_ENDPOINT)
+            .header("accept", "application/json")
+            .header("Authorization", auth)
+            .send()
+            .await;
+
+        let validate_response: TokenValidateResponse = r
+            .map_err(|e| {
+                println!("{:?}", e);
+                reject::custom(HTTPClientError)
+            })?
+            .json()
+            .await
+            .map_err(|e| {
+                println!("{:?}", e);
+                reject::custom(ValidateResponseDeserializeError)
+            })?;
+
+        println!(
+            "validate_resp: {:?}, scopes: {:?}",
+            validate_response,
+            validate_response.scopes()
+        );
+
+        Ok(validate_response)
     }
 }
 
