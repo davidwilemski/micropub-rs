@@ -77,12 +77,14 @@ impl AtomHandler {
             posts_views.push(post_view);
         }
 
-        let last_updated = posts_views
+        let sorted_posts = posts_views
             .iter()
             .map(|p| p.updated.as_str())
-            .sorted()
-            .nth(0)
-            .unwrap_or("2020-11-27 16:14:30"); // TODO allow configuration?
+            .sorted();
+        let last_updated = sorted_posts
+            .as_slice()
+            .last()
+            .unwrap_or(&"2020-11-27 16:14:30"); // TODO allow configuration?
 
         let template = self
             .templates
