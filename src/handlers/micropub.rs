@@ -51,7 +51,6 @@ struct MicropubJSONCreate {
 
 // TODO:
 // - quill appears to include 'published' and 'created' properties
-// - mp-slug is a valid way to send a predefined slug
 // - food entries seem... complex. See food entry test case below
 //   e.g. a 'drank' property may have a whole sub type/properties object...
 //   I'd really like to support recording this for e.g. tea blogging but this might require a
@@ -71,6 +70,7 @@ struct MicropubFormBuilder {
     name: Option<String>,
     created_at: Option<String>,
     updated_at: Option<String>,
+    slug: Option<String>,
 }
 
 fn set_from_prop<F>(builder: &mut MicropubFormBuilder, setter: &mut F, props: &MicropubProperties, prop: &str) -> bool
@@ -102,6 +102,7 @@ impl MicropubFormBuilder {
             name: None,
             created_at: None,
             updated_at: None,
+            slug: None,
         }
     }
 
@@ -173,6 +174,19 @@ impl MicropubFormBuilder {
                     _ => eprintln!("unexpected category type"),
                 }
             })),
+            (&["mp-slug"][..], Box::new(|builder: &mut MicropubFormBuilder, props: MicropubPropertyValue| {
+                match props {
+                    MicropubPropertyValue::Values(slugs) => {
+                        if slugs.len() != 1 {
+                            eprintln!("unexpected slugs length");
+                            return;
+                        }
+                        builder.set_slug(slugs[0].clone())
+                    },
+                    MicropubPropertyValue::Value(slug) => builder.set_slug(slug),
+                    _ => eprintln!("unexpected slug type"),
+                }
+            })),
         ];
 
         for (props, setter) in prop_setter_pairs {
@@ -192,6 +206,7 @@ impl MicropubFormBuilder {
             name: self.name,
             created_at: self.created_at,
             updated_at: self.updated_at,
+            slug: self.slug,
         })
     }
 
@@ -226,6 +241,10 @@ impl MicropubFormBuilder {
     fn set_created_at(&mut self, val: String) {
         self.created_at = Some(val)
     }
+
+    fn set_slug(&mut self, val: String) {
+        self.slug = Some(val)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -257,6 +276,9 @@ struct MicropubForm {
     /// time.
     created_at: Option<String>,
     updated_at: Option<String>,
+
+    /// Slug to use as part of URI
+    slug: Option<String>,
     // TODO: support additional fields and properties
 }
 
@@ -385,7 +407,10 @@ impl MicropubHandler {
             }
         };
 
-        let slug = post_util::get_slug(form.name.as_deref(), Local::now);
+        let slug = match form.slug {
+            Some(ref s) => s.clone(),
+            None => post_util::get_slug(form.name.as_deref(), Local::now),
+        };
 
         let new_post = NewPost {
             name: form.name.as_deref(),
@@ -484,6 +509,7 @@ mod test {
             category: vec!["test".into(), "micropub".into()],
             created_at: None,
             updated_at: None,
+            slug: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -501,6 +527,7 @@ mod test {
             category: vec!["micropub".into()],
             created_at: None,
             updated_at: None,
+            slug: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -518,6 +545,7 @@ mod test {
             category: vec![],
             created_at: None,
             updated_at: None,
+            slug: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -535,6 +563,7 @@ mod test {
             category: vec!["test".into()],
             created_at: None,
             updated_at: None,
+            slug: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -562,6 +591,7 @@ mod test {
             category: vec!["test".into()],
             created_at: None,
             updated_at: None,
+            slug: Some("quill-test".into()),
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
@@ -579,6 +609,7 @@ mod test {
             category: vec!["markdown".into()],
             created_at: None,
             updated_at: None,
+            slug: Some("markdown-test".into()),
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
@@ -596,6 +627,7 @@ mod test {
             category: vec!["publish-date".into()],
             created_at: Some("2020-04-04 15:30:00".into()),
             updated_at: None,
+            slug: Some("publish-date-slug".into()),
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
