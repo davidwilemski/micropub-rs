@@ -44,6 +44,7 @@ impl ArchiveHandler {
 
         use crate::schema::categories::dsl::*;
         let mut posts_views = vec![];
+        // TODO avoid n+1 query problem here
         for mut post in posts {
             let tags = categories
                 .select(category)
@@ -68,6 +69,8 @@ impl ArchiveHandler {
                         println!("date parsing error: {:?}", e);
                         // TODO shouldn't be a template error but realistically this would only happen if
                         // the DB had malformed data for template rendering...
+                        // 2020-12-29: this happened when inserting a date that looked like
+                        // '2020-12-29 15:30'
                         reject::custom(TemplateError)
                     })?;
             post.created_at = datetime.to_rfc3339();
