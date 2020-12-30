@@ -166,12 +166,12 @@ impl MicropubFormBuilder {
                 match props {
                     MicropubPropertyValue::Values(dates) => {
                         if dates.len() != 1 {
-                            eprintln!("unexpected publishe dates length");
+                            eprintln!("unexpected published dates length");
                             return;
                         }
                         builder.set_created_at(dates[0].clone())
                     },
-                    _ => eprintln!("unexpected category type"),
+                    _ => eprintln!("unexpected published type"),
                 }
             })),
             (&["mp-slug"][..], Box::new(|builder: &mut MicropubFormBuilder, props: MicropubPropertyValue| {
