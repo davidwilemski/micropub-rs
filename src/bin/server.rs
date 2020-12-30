@@ -133,7 +133,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .or(warp::path("theme").and(static_files))
             .or(fetch_post))))),
     )
-    .run(([127, 0, 0, 1], 3030))
+    .run(([0, 0, 0, 0], 3030))
     .await;
 
     Ok(())
