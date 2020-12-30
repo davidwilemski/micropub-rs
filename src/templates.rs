@@ -32,7 +32,7 @@ impl Templates {
         {% for post in posts %}
           <entry>
           <title>{{ post.title }}</title>
-          <link href="{{post.slug}}" rel="alternate"/>
+          <link href="/{{post.slug}}" rel="alternate"/>
           <published>{{ post.published }}</published>
           <updated>{{ post.updated }}</updated>
           <author>
