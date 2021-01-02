@@ -7,6 +7,14 @@ table! {
 }
 
 table! {
+    original_blobs (id) {
+        id -> Integer,
+        post_id -> Integer,
+        post_blob -> Binary,
+    }
+}
+
+table! {
     posts (id) {
         id -> Integer,
         slug -> Text,
@@ -21,8 +29,10 @@ table! {
 }
 
 joinable!(categories -> posts (post_id));
+joinable!(original_blobs -> posts (post_id));
 
 allow_tables_to_appear_in_same_query!(
     categories,
+    original_blobs,
     posts,
 );

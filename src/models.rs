@@ -101,3 +101,10 @@ pub struct NewCategory<'a> {
     pub post_id: i32,
     pub category: &'a str,
 }
+
+#[derive(Debug, Insertable)]
+#[table_name = "original_blobs"]
+pub struct NewOriginalBlob<'a> {
+    pub post_id: i32,
+    pub post_blob: &'a [u8],
+}

@@ -11,9 +11,9 @@ use warp::http::StatusCode;
 use warp::{reject, Rejection};
 
 use crate::errors::*;
-use crate::models::{NewCategory, NewPost};
+use crate::models::{NewCategory, NewOriginalBlob, NewPost};
 use crate::post_util;
-use crate::schema::{categories, posts};
+use crate::schema::{categories, original_blobs, posts};
 
 #[derive(Debug, Error)]
 enum MicropubFormError {
@@ -447,6 +447,14 @@ impl MicropubHandler {
                     .values(c)
                     .execute(&conn)?;
             }
+
+            let original_blob = NewOriginalBlob {
+                post_id: post_id,
+                post_blob: &body,
+            };
+            diesel::insert_into(original_blobs::table)
+                .values(original_blob)
+                .execute(&conn)?;
 
             Ok(())
         })

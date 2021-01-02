@@ -6,6 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Store new post input bytes into original_blobs table.
+
 ## [0.2.0] - 2020-12-30
 
 Minimum viable version of the `server` and `import_entry` binaries. Just enough
