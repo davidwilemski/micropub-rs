@@ -24,7 +24,7 @@ pub fn get_local_datetime(datetime: &str, offset: Option<chrono::FixedOffset>) -
         .map(|ndt| {
             chrono::DateTime::<chrono::Local>::from_utc(
                 ndt,
-                offset.unwrap_or(chrono::FixedOffset::east(7 * 3600)),
+                offset.unwrap_or(chrono::FixedOffset::west(8 * 3600)),
             )
         })
 }

@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2021-01-01
+### Fixed
+- Default datetime offset of -8 rather than +7.
+
+### Changed
+- Extract datetime parsing into post_util.
+
 ## [0.3.0] - 2021-01-01
 ### Added
 - Store new post input bytes into original_blobs table.
@@ -90,6 +97,7 @@ to import from a Pelican static site blog.
 - Clean up imports.
 - Initial commit.
 
-[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.3.0...HEAD
+[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.3.1...HEAD
+[0.3.1]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.0...0.3.1
 [0.3.0]: git@github.com:davidwilemski/micropub-rs/compare/0.2.0...0.3.0
 [0.2.0]: git@github.com:davidwilemski/micropub-rs/releases/tag/0.2.0
