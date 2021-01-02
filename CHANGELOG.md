@@ -6,8 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2021-01-01
 ### Added
 - Store new post input bytes into original_blobs table.
+
+### Changed
+- Add Dockerfile.
 
 ## [0.2.0] - 2020-12-30
 
@@ -86,5 +90,6 @@ to import from a Pelican static site blog.
 - Clean up imports.
 - Initial commit.
 
-[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.2.0...HEAD
+[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.3.0...HEAD
+[0.3.0]: git@github.com:davidwilemski/micropub-rs/compare/0.2.0...0.3.0
 [0.2.0]: git@github.com:davidwilemski/micropub-rs/releases/tag/0.2.0
