@@ -6,6 +6,7 @@ use warp::{reject, Rejection};
 
 use crate::errors::*;
 use crate::models::Post;
+use crate::post_util;
 use crate::templates;
 use crate::view_models::{ArticlesPage, Date as DateView, Post as PostView};
 
@@ -59,13 +60,7 @@ impl IndexHandler {
             .add_context("TOKEN_ENDPOINT", crate::TOKEN_ENDPOINT)
             .add_context("MICROPUB_ENDPOINT", crate::MICROPUB_ENDPOINT);
 
-        let datetime = chrono::NaiveDateTime::parse_from_str(&post.created_at, "%Y-%m-%d %H:%M:%S")
-            .map(|ndt| {
-                chrono::DateTime::<chrono::Local>::from_utc(
-                    ndt,
-                    chrono::FixedOffset::east(7 * 3600),
-                )
-            })
+        let datetime = post_util::get_local_datetime(&post.created_at, None)
             .map_err(|e| {
                 println!("date parsing error: {:?}", e);
                 // TODO shouldn't be a template error but realistically this would only happen if

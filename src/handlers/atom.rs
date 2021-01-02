@@ -7,6 +7,7 @@ use warp::{http::Response, reject, Rejection};
 
 use crate::errors::*;
 use crate::models::Post;
+use crate::post_util;
 use crate::templates;
 use crate::view_models::{Date as DateView, Post as PostView};
 
@@ -57,20 +58,13 @@ impl AtomHandler {
 
             // TODO this is copied from FetchHandler. Both should not do this and should instead be
             // handled e.g. at the view model creation time.
-            let datetime =
-                chrono::NaiveDateTime::parse_from_str(&post.created_at, "%Y-%m-%d %H:%M:%S")
-                    .map(|ndt| {
-                        chrono::DateTime::<chrono::Local>::from_utc(
-                            ndt,
-                            chrono::FixedOffset::east(7 * 3600),
-                        )
-                    })
-                    .map_err(|e| {
-                        println!("date parsing error: {:?}", e);
-                        // TODO shouldn't be a template error but realistically this would only happen if
-                        // the DB had malformed data for template rendering...
-                        reject::custom(TemplateError)
-                    })?;
+            let datetime = post_util::get_local_datetime(&post.created_at, None)
+                .map_err(|e| {
+                    println!("date parsing error: {:?}", e);
+                    // TODO shouldn't be a template error but realistically this would only happen if
+                    // the DB had malformed data for template rendering...
+                    reject::custom(TemplateError)
+                })?;
             post.created_at = datetime.to_rfc3339();
 
             let post_view = PostView::new_from(post, tags, DateView::from(&datetime));

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local};
+use chrono::{DateTime, Local, TimeZone};
 
 fn get_first_n(n: usize, input: &str) -> String {
     input.to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).take(n).collect()
@@ -17,6 +17,16 @@ pub fn get_slug(name: Option<&str>, now_fn: fn() -> DateTime<Local>) -> String {
     };
 
     slug.replace(" ", "-")
+}
+
+pub fn get_local_datetime(datetime: &str, offset: Option<chrono::FixedOffset>) -> Result<DateTime<Local>, chrono::format::ParseError> {
+    chrono::NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S")
+        .map(|ndt| {
+            chrono::DateTime::<chrono::Local>::from_utc(
+                ndt,
+                offset.unwrap_or(chrono::FixedOffset::east(7 * 3600)),
+            )
+        })
 }
 
 #[cfg(test)]
