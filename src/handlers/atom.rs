@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use diesel::prelude::*;
 use diesel::r2d2;
-use itertools::Itertools;
 use warp::{http::Response, reject, Rejection};
 
 use crate::errors::*;
@@ -71,13 +70,11 @@ impl AtomHandler {
             posts_views.push(post_view);
         }
 
-        let sorted_posts = posts_views
+        // posts_views is sorted desc from the DB
+        let last_updated = posts_views
             .iter()
             .map(|p| p.updated.as_str())
-            .sorted();
-        let last_updated = sorted_posts
-            .as_slice()
-            .last()
+            .nth(0)
             .unwrap_or(&"2020-11-27 16:14:30"); // TODO allow configuration?
 
         let template = self
