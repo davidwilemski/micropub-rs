@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use diesel::prelude::*;
@@ -40,13 +41,21 @@ impl AtomHandler<MicropubDB> {
 
         use crate::schema::categories::dsl::*;
         let mut posts_views = vec![];
-        for mut post in posts {
-            let tags = categories
-                .select(category)
-                .filter(post_id.eq(post.id))
-                .get_results(&conn)
-                .map_err(|e| self.db.handle_errors(e))?;
+        let post_ids = posts.iter().map(|p| p.id).collect::<Vec<i32>>();
+        let mut query_result: Vec<(i32, String)> = categories
+            .select((post_id, category))
+            .filter(post_id.eq_any(post_ids))
+            .get_results(&conn)
+            .map_err(|e| self.db.handle_errors(e))?;
+        query_result.sort_by_key(|item| item.0);
+        let mut tags: HashMap<i32, Vec<String>> = HashMap::new();
+        for (post_id_, tag) in query_result {
+            tags.entry(post_id_)
+                .or_default()
+                .push(tag);
+        }
 
+        for mut post in posts {
             // TODO this is copied from FetchHandler. Both should not do this and should instead be
             // handled e.g. at the view model creation time.
             let datetime = post_util::get_local_datetime(&post.created_at, None)
@@ -58,7 +67,8 @@ impl AtomHandler<MicropubDB> {
                 })?;
             post.created_at = datetime.to_rfc3339();
 
-            let post_view = PostView::new_from(post, tags, DateView::from(&datetime));
+            let pid = post.id;
+            let post_view = PostView::new_from(post, tags.remove(&pid).unwrap_or(vec![]), DateView::from(&datetime));
             posts_views.push(post_view);
         }
 
