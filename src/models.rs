@@ -62,14 +62,14 @@ impl Post {
 
     pub fn all<'a>() -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
-        posts.select(ALL_COLUMNS).order_by(created_at).into_boxed()
+        posts.select(ALL_COLUMNS).order_by(created_at.desc()).into_boxed()
     }
 
     pub fn by_tag<'a>(tag: &'a str) -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
         posts
             .filter(id.eq_any(posts_for_category(tag)))
-            .order_by(created_at)
+            .order_by(created_at.desc())
             .into_boxed()
     }
 
