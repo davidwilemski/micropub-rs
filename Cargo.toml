@@ -23,5 +23,8 @@ tera = "1.2"
 thiserror = "1.0"
 tokio = { version = "0.2", features = ["macros"] }
 url = "2.1"
-warp = "0.2"
+# FIXME update once something higher than warp 0.2.5 is released. It
+# contains a impl<Rejection> From<Reject> that really aids in error
+# ergonomics (and some dependency removals/compilation speedups).
+warp = { default-features = false, git = "https://github.com/seanmonstar/warp/", ref = "5e164616" }
 
