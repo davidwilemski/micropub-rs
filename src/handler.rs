@@ -16,15 +16,17 @@ pub trait WithDB {
         })
     }
 
-    fn run_txn<T, F>(&self, f: F) -> Result<T, DBError> 
-    where F: FnOnce(&PooledConnection<ConnectionManager<SqliteConnection>>) -> Result<T, diesel::result::Error>
+    fn run_txn<T, F>(&self, f: F) -> Result<T, DBError>
+    where
+        F: FnOnce(
+            &PooledConnection<ConnectionManager<SqliteConnection>>,
+        ) -> Result<T, diesel::result::Error>,
     {
         let conn = self.dbconn()?;
-        conn.transaction(|| f(&conn))
-            .map_err(|e| {
-                println!("{:?}", e);
-                DBError
-            })
+        conn.transaction(|| f(&conn)).map_err(|e| {
+            println!("{:?}", e);
+            DBError
+        })
     }
 }
 
