@@ -11,6 +11,7 @@ use warp::http::StatusCode;
 use warp::{reject, Rejection};
 
 use crate::errors::*;
+use crate::handler::{MicropubDB, WithDB};
 use crate::models::{NewCategory, NewOriginalBlob, NewPost};
 use crate::post_util;
 use crate::schema::{categories, original_blobs, posts};
@@ -334,16 +335,16 @@ fn get_latest_post_id(conn: &SqliteConnection) -> Result<i32, diesel::result::Er
     posts.select(id).order(id.desc()).limit(1).first(conn)
 }
 
-pub struct MicropubHandler {
+pub struct MicropubHandler<DB: WithDB> {
     http_client: reqwest::Client,
-    dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
+    db: DB,
 }
 
-impl MicropubHandler {
+impl MicropubHandler<MicropubDB> {
     pub fn new(pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>) -> Self {
         let handler = MicropubHandler {
             http_client: reqwest::Client::new(),
-            dbpool: pool,
+            db: MicropubDB::new(pool),
         };
 
         handler
@@ -423,16 +424,11 @@ impl MicropubHandler {
             updated_at: form.updated_at.as_deref(),
         };
 
-        let conn = self.dbpool.get().map_err(|e| {
-            println!("{:?}", e);
-            reject::custom(DBError)
-        })?;
-
-        conn.transaction::<_, anyhow::Error, _>(|| {
+        self.db.run_txn(|conn| {
             diesel::insert_into(posts::table)
                 .values(&new_post)
-                .execute(&conn)?;
-            let post_id = get_latest_post_id(&conn)?;
+                .execute(conn)?;
+            let post_id = get_latest_post_id(conn)?;
             let new_categories: Vec<NewCategory> = form
                 .category
                 .iter()
@@ -445,7 +441,7 @@ impl MicropubHandler {
             for c in new_categories {
                 diesel::insert_into(categories::table)
                     .values(c)
-                    .execute(&conn)?;
+                    .execute(conn)?;
             }
 
             let original_blob = NewOriginalBlob {
@@ -454,13 +450,9 @@ impl MicropubHandler {
             };
             diesel::insert_into(original_blobs::table)
                 .values(original_blob)
-                .execute(&conn)?;
+                .execute(conn)?;
 
             Ok(())
-        })
-        .map_err(|e| {
-            println!("{:?}", e);
-            reject::custom(DBError)
         })?;
 
         Ok(slug)

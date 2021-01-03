@@ -5,33 +5,30 @@ use diesel::r2d2;
 use warp::{reject, Rejection};
 
 use crate::errors::*;
+use crate::handler::{MicropubDB, WithDB};
 use crate::models::Post;
 use crate::post_util;
 use crate::templates;
 use crate::view_models::{Date as DateView, Post as PostView};
 
-pub struct ArchiveHandler {
-    dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
+pub struct ArchiveHandler<DB: WithDB> {
+    db: DB,
     templates: Arc<templates::Templates>,
 }
 
-impl ArchiveHandler {
+impl ArchiveHandler<MicropubDB> {
     pub fn new(
         pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
         templates: Arc<templates::Templates>,
     ) -> Self {
         ArchiveHandler {
-            dbpool: pool,
+            db: MicropubDB::new(pool),
             templates,
         }
     }
 
     pub async fn get(&self, tag: Option<&str>) -> Result<impl warp::Reply, Rejection> {
-        let conn = self.dbpool.get().map_err(|e| {
-            println!("{:?}", e);
-            reject::custom(DBError)
-        })?;
-
+        let conn = self.db.dbconn()?;
         let posts =
             tag.map(|t| Post::by_tag(t)).unwrap_or(Post::all())
                 .load::<Post>(&conn)

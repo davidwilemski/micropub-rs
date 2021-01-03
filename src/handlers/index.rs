@@ -5,32 +5,30 @@ use diesel::r2d2;
 use warp::{reject, Rejection};
 
 use crate::errors::*;
+use crate::handler::{MicropubDB, WithDB};
 use crate::models::Post;
 use crate::post_util;
 use crate::templates;
 use crate::view_models::{ArticlesPage, Date as DateView, Post as PostView};
 
-pub struct IndexHandler {
-    dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
+pub struct IndexHandler<DB: WithDB> {
+    db: DB,
     templates: Arc<templates::Templates>,
 }
 
-impl IndexHandler {
+impl IndexHandler<MicropubDB> {
     pub fn new(
         pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
         templates: Arc<templates::Templates>,
     ) -> Self {
         Self {
-            dbpool: pool,
+            db: MicropubDB::new(pool),
             templates,
         }
     }
 
     pub async fn get(&self) -> Result<impl warp::Reply, Rejection> {
-        let conn = self.dbpool.get().map_err(|e| {
-            println!("{:?}", e);
-            reject::custom(DBError)
-        })?;
+        let conn = self.db.dbconn()?;
 
         let mut post =
             Post::latest()

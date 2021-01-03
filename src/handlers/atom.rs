@@ -5,32 +5,30 @@ use diesel::r2d2;
 use warp::{http::Response, reject, Rejection};
 
 use crate::errors::*;
+use crate::handler::{MicropubDB, WithDB};
 use crate::models::Post;
 use crate::post_util;
 use crate::templates;
 use crate::view_models::{Date as DateView, Post as PostView};
 
-pub struct AtomHandler {
-    dbpool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
+pub struct AtomHandler<DB: WithDB> {
+    db: DB,
     templates: Arc<templates::Templates>,
 }
 
-impl AtomHandler {
+impl AtomHandler<MicropubDB> {
     pub fn new(
         pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
         templates: Arc<templates::Templates>,
     ) -> Self {
         Self {
-            dbpool: pool,
+            db: MicropubDB::new(pool),
             templates,
         }
     }
 
     pub async fn get(&self) -> Result<impl warp::Reply, Rejection> {
-        let conn = self.dbpool.get().map_err(|e| {
-            println!("{:?}", e);
-            reject::custom(DBError)
-        })?;
+        let conn = self.db.dbconn()?;
 
         let posts =
             Post::all()

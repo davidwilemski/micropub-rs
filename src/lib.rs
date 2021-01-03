@@ -6,6 +6,7 @@ use diesel::prelude::SqliteConnection;
 
 pub mod constants;
 pub mod errors;
+pub mod handler;
 pub mod handlers;
 pub mod models;
 pub mod post_util;
