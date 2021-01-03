@@ -6,6 +6,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2021-01-02
+### Fixed
+- Ensure returned posts are reverse sorted.
+
+### Changed
+- Make Dockerfile use rustc 1.49.
+- Avoid n+1 tag lookup in atom and archive handlers.
+- Clean up DBError handling.
+- Rustfmt handler.rs.
+- Simplify db connection pool interactions.
+- Upgrade Warp dependency.
+- Cargo update to upgrade deps in lockfile.
+- Remove itertools dep.
+
 ## [0.3.1] - 2021-01-01
 ### Fixed
 - Default datetime offset of -8 rather than +7.
@@ -97,7 +111,8 @@ to import from a Pelican static site blog.
 - Clean up imports.
 - Initial commit.
 
-[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.3.1...HEAD
+[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.3.2...HEAD
+[0.3.2]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.1...0.3.2
 [0.3.1]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.0...0.3.1
 [0.3.0]: git@github.com:davidwilemski/micropub-rs/compare/0.2.0...0.3.0
 [0.2.0]: git@github.com:davidwilemski/micropub-rs/releases/tag/0.2.0
