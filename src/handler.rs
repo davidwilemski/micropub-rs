@@ -9,6 +9,11 @@ use crate::errors::DBError;
 pub trait WithDB {
     fn dbpool(&self) -> &Pool<ConnectionManager<SqliteConnection>>;
 
+    fn handle_errors(&self, e: diesel::result::Error) -> DBError {
+        println!("{:?}", e);
+        DBError
+    }
+
     fn dbconn(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, DBError> {
         self.dbpool().get().map_err(|e| {
             println!("{:?}", e);
@@ -23,11 +28,9 @@ pub trait WithDB {
         ) -> Result<T, diesel::result::Error>,
     {
         let conn = self.dbconn()?;
-        conn.transaction(|| f(&conn)).map_err(|e| {
-            println!("{:?}", e);
-            DBError
-        })
+        conn.transaction(|| f(&conn)).map_err(|e| self.handle_errors(e))
     }
+
 }
 
 pub struct MicropubDB {

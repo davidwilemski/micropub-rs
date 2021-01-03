@@ -35,10 +35,7 @@ impl IndexHandler<MicropubDB> {
                 .first::<Post>(&conn)
                 .map_err(|e: diesel::result::Error| match e {
                     diesel::result::Error::NotFound => warp::reject::not_found(),
-                    _ => {
-                        println!("{:?}", e);
-                        reject::custom(DBError)
-                    }
+                    _ => reject::custom(self.db.handle_errors(e)),
                 })?;
 
         use crate::schema::categories::dsl::*;
@@ -46,10 +43,7 @@ impl IndexHandler<MicropubDB> {
             .select(category)
             .filter(post_id.eq(post.id))
             .get_results(&conn)
-            .map_err(|e| {
-                println!("{:?}", e);
-                reject::custom(DBError)
-            })?;
+            .map_err(|e| self.db.handle_errors(e))?;
 
         // Only on main page for indieauth login
         let template = self.templates

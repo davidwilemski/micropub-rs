@@ -35,10 +35,7 @@ impl AtomHandler<MicropubDB> {
                 .load::<Post>(&conn)
                 .map_err(|e: diesel::result::Error| match e {
                     diesel::result::Error::NotFound => warp::reject::not_found(),
-                    _ => {
-                        println!("{:?}", e);
-                        reject::custom(DBError)
-                    }
+                    _ => reject::custom(self.db.handle_errors(e)),
                 })?;
 
         use crate::schema::categories::dsl::*;
@@ -48,10 +45,7 @@ impl AtomHandler<MicropubDB> {
                 .select(category)
                 .filter(post_id.eq(post.id))
                 .get_results(&conn)
-                .map_err(|e| {
-                    println!("{:?}", e);
-                    reject::custom(DBError)
-                })?;
+                .map_err(|e| self.db.handle_errors(e))?;
 
             // TODO this is copied from FetchHandler. Both should not do this and should instead be
             // handled e.g. at the view model creation time.
