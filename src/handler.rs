@@ -3,6 +3,7 @@ use std::sync::Arc;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::SqliteConnection;
+use log::error;
 
 use crate::errors::DBError;
 
@@ -10,13 +11,13 @@ pub trait WithDB {
     fn dbpool(&self) -> &Pool<ConnectionManager<SqliteConnection>>;
 
     fn handle_errors(&self, e: diesel::result::Error) -> DBError {
-        println!("{:?}", e);
+        error!("{:?}", e);
         DBError
     }
 
     fn dbconn(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, DBError> {
         self.dbpool().get().map_err(|e| {
-            println!("{:?}", e);
+            error!("{:?}", e);
             DBError
         })
     }

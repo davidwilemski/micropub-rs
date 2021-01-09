@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use diesel::prelude::*;
 use diesel::r2d2;
+use log::{debug, info, error};
 use warp::{reject, Rejection};
 
 use crate::errors::*;
@@ -28,7 +29,7 @@ impl FetchHandler<MicropubDB> {
     }
 
     pub async fn fetch_post(&self, url_slug: &str) -> Result<impl warp::Reply, Rejection> {
-        eprintln!("fetch_post url_slug:{:?}", url_slug);
+        info!("fetch_post url_slug:{:?}", url_slug);
         let conn = self.db.dbconn()?;
 
         let mut post = Post::by_slug(url_slug).first::<Post>(&conn).map_err(
@@ -45,10 +46,10 @@ impl FetchHandler<MicropubDB> {
             .get_results(&conn)
             .map_err(|e| self.db.handle_errors(e))?;
 
-        println!("input datetime: {:?}", post.created_at);
+        debug!("input datetime: {:?}", post.created_at);
         let datetime = post_util::get_local_datetime(&post.created_at, None)
             .map_err(|e| {
-                println!("date parsing error: {:?}", e);
+                error!("date parsing error: {:?}", e);
                 // TODO shouldn't be a template error but realistically this would only happen if
                 // the DB had malformed data for template rendering...
                 reject::custom(TemplateError)
@@ -60,7 +61,7 @@ impl FetchHandler<MicropubDB> {
             .add_context("article", &post_view)
             .render("article.html")
             .map_err(|e| {
-                println!("{:?}", e);
+                error!("{:?}", e);
                 reject::custom(TemplateError)
             })?;
         Ok(warp::reply::html(page))

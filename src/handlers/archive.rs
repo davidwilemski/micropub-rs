@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use diesel::prelude::*;
 use diesel::r2d2;
+use log::error;
 use warp::{reject, Rejection};
 
 use crate::errors::*;
@@ -59,7 +60,7 @@ impl ArchiveHandler<MicropubDB> {
             // handled e.g. at the view model creation time.
             let datetime = post_util::get_local_datetime(&post.created_at, None)
                 .map_err(|e| {
-                    println!("date parsing error: {:?}", e);
+                    error!("date parsing error: {:?}", e);
                     // TODO shouldn't be a template error but realistically this would only happen if
                     // the DB had malformed data for template rendering...
                     reject::custom(TemplateError)
@@ -76,7 +77,7 @@ impl ArchiveHandler<MicropubDB> {
             .add_context("dates", &posts_views)
             .add_context("tag", &tag);
         let page = template.render("archives.html").map_err(|e| {
-            println!("{:?}", e);
+            error!("{:?}", e);
             reject::custom(TemplateError)
         })?;
 

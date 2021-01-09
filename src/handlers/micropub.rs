@@ -3,6 +3,7 @@ use std::sync::Arc;
 use chrono::Local;
 use diesel::prelude::*;
 use diesel::r2d2;
+use log::{info, error};
 use reqwest;
 use url::form_urlencoded::parse;
 use serde::Deserialize;
@@ -149,7 +150,7 @@ impl MicropubFormBuilder {
                             builder.set_name((**s).clone())
                         });
                     }
-                    _ => eprintln!("unexpected name type")
+                    _ => error!("unexpected name type")
                 };
             })),
             (&["category"][..], Box::new(|builder: &mut MicropubFormBuilder, props: MicropubPropertyValue| {
@@ -160,32 +161,32 @@ impl MicropubFormBuilder {
                     MicropubPropertyValue::Values(cs) => {
                         cs.iter().for_each(|c| builder.add_category(c.clone()));
                     }
-                    _ => eprintln!("unexpected category type")
+                    _ => error!("unexpected category type")
                 };
             })),
             (&["published"][..], Box::new(|builder: &mut MicropubFormBuilder, props: MicropubPropertyValue| {
                 match props {
                     MicropubPropertyValue::Values(dates) => {
                         if dates.len() != 1 {
-                            eprintln!("unexpected published dates length");
+                            error!("unexpected published dates length");
                             return;
                         }
                         builder.set_created_at(dates[0].clone())
                     },
-                    _ => eprintln!("unexpected published type"),
+                    _ => error!("unexpected published type"),
                 }
             })),
             (&["mp-slug"][..], Box::new(|builder: &mut MicropubFormBuilder, props: MicropubPropertyValue| {
                 match props {
                     MicropubPropertyValue::Values(slugs) => {
                         if slugs.len() != 1 {
-                            eprintln!("unexpected slugs length");
+                            error!("unexpected slugs length");
                             return;
                         }
                         builder.set_slug(slugs[0].clone())
                     },
                     MicropubPropertyValue::Value(slug) => builder.set_slug(slug),
-                    _ => eprintln!("unexpected slug type"),
+                    _ => error!("unexpected slug type"),
                 }
             })),
         ];
@@ -356,7 +357,7 @@ impl MicropubHandler<MicropubDB> {
         auth: String,
         body: bytes::Bytes,
     ) -> Result<impl warp::Reply, Rejection> {
-        println!("body: {:?}", &body.slice(..));
+        info!("body: {:?}", &body.slice(..));
 
         let validate_response = self.verify_auth(&auth).await?;
 
@@ -395,14 +396,14 @@ impl MicropubHandler<MicropubDB> {
         let form = match ct.to_lowercase().as_str() {
             "application/json" => {
                 MicropubForm::from_json_bytes(&body.slice(..)).map_err(|e| {
-                    println!("{:?}", e);
+                    error!("{:?}", e);
                     reject::custom(ValidateResponseDeserializeError)
                 })?
             }
             _ => {
                 // x-www-form-urlencoded
                 MicropubForm::from_form_bytes(&body.slice(..)).map_err(|e| {
-                    println!("{:?}", e);
+                    error!("{:?}", e);
                     reject::custom(ValidateResponseDeserializeError)
                 })?
             }
@@ -473,17 +474,17 @@ impl MicropubHandler<MicropubDB> {
 
         let validate_response: TokenValidateResponse = r
             .map_err(|e| {
-                println!("{:?}", e);
+                error!("{:?}", e);
                 reject::custom(HTTPClientError)
             })?
             .json()
             .await
             .map_err(|e| {
-                println!("{:?}", e);
+                error!("{:?}", e);
                 reject::custom(ValidateResponseDeserializeError)
             })?;
 
-        println!(
+        info!(
             "validate_resp: {:?}, scopes: {:?}",
             validate_response,
             validate_response.scopes()

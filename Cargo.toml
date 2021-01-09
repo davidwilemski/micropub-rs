@@ -15,6 +15,8 @@ bytes = "0.5"
 chrono = "0.4"
 diesel = { version = "1.4", features = ["sqlite", "r2d2"] }
 indoc = "1.0"
+log = "0.4"
+env_logger = "0.8"
 markdown = "0.3"
 reqwest = { version = "0.10", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }

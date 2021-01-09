@@ -4,6 +4,7 @@ extern crate anyhow;
 use std::env;
 use std::sync::Arc;
 
+use log::{info, error};
 use warp::http::StatusCode;
 use warp::{Filter, Rejection};
 
@@ -15,6 +16,7 @@ use micropub_rs::templates;
 async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection> {
     // TODO JSON errors?
     if let Some(errors::NotAuthorized) = err.find() {
+        error!("Handling NotAuthorized error: {:?}", err);
         return Ok(warp::reply::with_status(
             "Not Authorized",
             StatusCode::FORBIDDEN,
@@ -28,9 +30,11 @@ async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection>
     // for custom rejections but we could do some instrumentation or logging
     // here or whatever.
     if let Some(errors::HTTPClientError) = err.find() {
+        error!("Handling HTTPClientError: {:?}", err);
         return Ok(internal_server_error);
     }
     if let Some(errors::ValidateResponseDeserializeError) = err.find() {
+        error!("Handling ValidateResponseDeserializeError: {:?}", err);
         return Ok(internal_server_error);
     }
 
@@ -40,9 +44,13 @@ async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection>
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
+    env_logger::init();
+
     let dbfile = env::var("DATABASE_URL")?;
     let template_dir = env::var(TEMPLATE_DIR_VAR)?;
     let dbpool = Arc::new(micropub_rs::new_dbconn_pool(&dbfile)?);
+    info!("created dbpool from {:?}", dbfile);
+
     let template_pattern = std::path::Path::new(&template_dir).join("templates/**/*.html");
     let tera = Arc::new(tera::Tera::new(
         template_pattern
@@ -56,6 +64,7 @@ async fn main() -> Result<(), anyhow::Error> {
     base_ctx.insert("MENUITEMS", crate::MENU_ITEMS);
     base_ctx.insert("FEED_DOMAIN", "");
     base_ctx.insert("FEED_ALL_ATOM", "feeds/all.atom.xml");
+    info!("initialized template system with templates in {:?}", template_dir);
 
     let atom_ctx = base_ctx.clone();
 

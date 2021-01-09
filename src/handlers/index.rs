@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use diesel::prelude::*;
 use diesel::r2d2;
+use log::error;
 use warp::{reject, Rejection};
 
 use crate::errors::*;
@@ -54,7 +55,7 @@ impl IndexHandler<MicropubDB> {
 
         let datetime = post_util::get_local_datetime(&post.created_at, None)
             .map_err(|e| {
-                println!("date parsing error: {:?}", e);
+                error!("date parsing error: {:?}", e);
                 // TODO shouldn't be a template error but realistically this would only happen if
                 // the DB had malformed data for template rendering...
                 reject::custom(TemplateError)
@@ -67,7 +68,7 @@ impl IndexHandler<MicropubDB> {
             .add_context("articles_page", &articles_page)
             .render("index.html")
             .map_err(|e| {
-                println!("{:?}", e);
+                error!("{:?}", e);
                 reject::custom(TemplateError)
             })?;
         Ok(warp::reply::html(page))
