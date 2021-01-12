@@ -73,6 +73,7 @@ struct MicropubFormBuilder {
     created_at: Option<String>,
     updated_at: Option<String>,
     slug: Option<String>,
+    bookmark_of: Option<String>,
 }
 
 fn set_from_prop<F>(builder: &mut MicropubFormBuilder, setter: &mut F, props: &MicropubProperties, prop: &str) -> bool
@@ -105,6 +106,7 @@ impl MicropubFormBuilder {
             created_at: None,
             updated_at: None,
             slug: None,
+            bookmark_of: None,
         }
     }
 
@@ -189,6 +191,21 @@ impl MicropubFormBuilder {
                     _ => error!("unexpected slug type"),
                 }
             })),
+            (&["bookmark-of"][..], Box::new(|builder: &mut MicropubFormBuilder, props: MicropubPropertyValue| {
+                match props {
+                    MicropubPropertyValue::Values(mut bookmark_urls) => {
+                        if bookmark_urls.len() != 1 {
+                            // TODO log
+                            return;
+                        }
+                        // TODO is there a different entry type we should set here? Should an extra
+                        // post type column be added? Seems others (and clients) still set
+                        // entry_type as h-entry so maybe the latter?
+                        builder.set_bookmark_of(bookmark_urls.pop().expect("bookmark_urls len was checked as 1"));
+                    }
+                    _ => eprintln!("unexpected bookmark_of property type"),
+                }
+            })),
         ];
 
         for (props, setter) in prop_setter_pairs {
@@ -209,6 +226,7 @@ impl MicropubFormBuilder {
             created_at: self.created_at,
             updated_at: self.updated_at,
             slug: self.slug,
+            bookmark_of: self.bookmark_of,
         })
     }
 
@@ -247,6 +265,10 @@ impl MicropubFormBuilder {
     fn set_slug(&mut self, val: String) {
         self.slug = Some(val)
     }
+
+    fn set_bookmark_of(&mut self, val: String) {
+        self.bookmark_of = Some(val)
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -281,6 +303,9 @@ struct MicropubForm {
 
     /// Slug to use as part of URI
     slug: Option<String>,
+
+    /// Indicates entry is a bookmark type. String should be a URL.
+    bookmark_of: Option<String>,
     // TODO: support additional fields and properties
 }
 
@@ -300,6 +325,7 @@ impl MicropubForm {
                 },
                 "category" | "category[]" => builder.add_category(v.into_owned()),
                 "name" => builder.set_name(v.into_owned()),
+                "bookmark-of" => builder.set_bookmark_of(v.into_owned()),
                 _ => (),
             }
         }
@@ -423,6 +449,7 @@ impl MicropubHandler<MicropubDB> {
             client_id: Some(client_id),
             created_at: form.created_at.as_deref(),
             updated_at: form.updated_at.as_deref(),
+            bookmark_of: form.bookmark_of.as_deref(),
         };
 
         self.db.run_txn(|conn| {
@@ -511,6 +538,7 @@ mod test {
             created_at: None,
             updated_at: None,
             slug: None,
+            bookmark_of: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -529,6 +557,7 @@ mod test {
             created_at: None,
             updated_at: None,
             slug: None,
+            bookmark_of: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -547,6 +576,7 @@ mod test {
             created_at: None,
             updated_at: None,
             slug: None,
+            bookmark_of: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -565,6 +595,7 @@ mod test {
             created_at: None,
             updated_at: None,
             slug: None,
+            bookmark_of: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -593,6 +624,26 @@ mod test {
             created_at: None,
             updated_at: None,
             slug: Some("quill-test".into()),
+            bookmark_of: None,
+        };
+
+        assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
+    }
+
+    #[test]
+    fn micropub_json_decode_bookmark_of_entry() {
+        let bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"name\":[\"Testing bookmarks\"],\"content\":[\"Bookmark test\"],\"bookmark-of\":[\"https://davidwilemski.com\"]}}";
+        let form = MicropubForm {
+            access_token: None,
+            name: Some("Testing bookmarks".into()),
+            h: "entry".into(),
+            content: "Bookmark test".into(),
+            content_type: None,
+            category: vec![],
+            created_at: None,
+            updated_at: None,
+            slug: None,
+            bookmark_of: Some("https://davidwilemski.com".into()),
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
@@ -611,6 +662,7 @@ mod test {
             created_at: None,
             updated_at: None,
             slug: Some("markdown-test".into()),
+            bookmark_of: None,
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
@@ -629,6 +681,7 @@ mod test {
             created_at: Some("2020-04-04 15:30:00".into()),
             updated_at: None,
             slug: Some("publish-date-slug".into()),
+            bookmark_of: None,
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());

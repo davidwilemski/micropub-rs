@@ -16,6 +16,7 @@ type AllColumns = (
     posts::created_at,
     posts::updated_at,
     posts::content_type,
+    posts::bookmark_of,
 );
 
 const ALL_COLUMNS: AllColumns = (
@@ -28,6 +29,7 @@ const ALL_COLUMNS: AllColumns = (
     posts::created_at,
     posts::updated_at,
     posts::content_type,
+    posts::bookmark_of,
 );
 
 type PostSqlType = <AllColumns as Expression>::SqlType;
@@ -52,12 +54,13 @@ pub struct Post {
     pub created_at: String,
     pub updated_at: String,
     pub content_type: Option<String>,
+    pub bookmark_of: Option<String>,
 }
 
 impl Post {
     pub fn by_slug<'a>(url_slug: &'a str) -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
-        posts.filter(slug.eq(url_slug)).into_boxed()
+        Post::all().filter(slug.eq(url_slug))
     }
 
     pub fn all<'a>() -> BoxedPostsQuery<'a> {
@@ -67,18 +70,16 @@ impl Post {
 
     pub fn by_tag<'a>(tag: &'a str) -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
-        posts
+        Post::all()
             .filter(id.eq_any(posts_for_category(tag)))
             .order_by(created_at.desc())
-            .into_boxed()
     }
 
     pub fn latest<'a>() -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
-        posts
+        Post::all()
             .order_by(created_at.desc())
             .limit(1)
-            .into_boxed()
     }
 }
 
@@ -93,6 +94,7 @@ pub struct NewPost<'a> {
     pub client_id: Option<&'a str>,
     pub created_at: Option<&'a str>,
     pub updated_at: Option<&'a str>,
+    pub bookmark_of: Option<&'a str>,
 }
 
 #[derive(Debug, Insertable)]

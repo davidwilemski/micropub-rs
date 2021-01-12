@@ -41,6 +41,7 @@ pub struct Post {
     pub updated: String,
     pub tags: Vec<String>,
     pub date: Date,
+    pub bookmark_of: Option<String>,
 }
 
 impl Post {
@@ -61,6 +62,7 @@ impl Post {
             updated: post.updated_at,
             date: date,
             tags: categories,
+            bookmark_of: post.bookmark_of,
         }
     }
 }

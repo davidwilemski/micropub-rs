@@ -31,7 +31,7 @@ impl Templates {
         <updated>{{updated_date}}</updated>
         {% for post in posts %}
           <entry>
-          <title>{{ post.title }}</title>
+          <title>{% if post.bookmark_of %}🔖 {% endif %}{{ post.title }}</title>
           <link href="/{{post.slug}}" rel="alternate"/>
           <published>{{ post.published }}</published>
           <updated>{{ post.updated }}</updated>
@@ -39,7 +39,13 @@ impl Templates {
             <name>David Wilemski</name>
           </author>
           <id>tag:davidwilemski.com,{{ post.date.date }}:{{ post.slug }}</id>
-          <content type="html" xml:lang="en">{{ post.content | safe}}</content>
+          <content type="html" xml:lang="en">
+            {{ post.content | safe}}
+            {% if post.bookmark_of %}
+            <br />
+            <a href="{{ post.bookmark_of }}" rel="nofollow">(🔖 bookmark)</a>
+            {% endif %}
+          </content>
           {% for tag in post.tags %}
           <category term="{{ tag }}"/>
           {% endfor %}
