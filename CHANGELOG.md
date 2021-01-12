@@ -6,6 +6,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2021-01-11
+### Added
+- Add bookmark-of support for bookmark style posts.
+- Add access logging filter.
+
+### Fixed
+- Replace any println calls with log calls.
+- Enable multithreaded tokio runtime.
+
+### Changed
+- Remote extra newline.
+
 ## [0.3.2] - 2021-01-02
 ### Fixed
 - Ensure returned posts are reverse sorted.
@@ -111,7 +123,8 @@ to import from a Pelican static site blog.
 - Clean up imports.
 - Initial commit.
 
-[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.3.2...HEAD
+[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.4.0...HEAD
+[0.4.0]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.2...0.4.0
 [0.3.2]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.1...0.3.2
 [0.3.1]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.0...0.3.1
 [0.3.0]: git@github.com:davidwilemski/micropub-rs/compare/0.2.0...0.3.0

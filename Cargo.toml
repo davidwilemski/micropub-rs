@@ -1,6 +1,6 @@
 [package]
 name = "micropub_rs"
-version = "0.3.2"
+version = "0.4.0"
 authors = ["David Wilemski <david@wilemski.org>"]
 edition = "2018"
 
