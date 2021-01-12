@@ -137,10 +137,13 @@ async fn main() -> Result<(), anyhow::Error> {
         async move { h.get().await }
     });
 
+    let log = warp::log("micropub::server");
+
     warp::serve(
         index.or(micropub.or(tag_archives.or(archives.or(atom
             .or(warp::path("theme").and(static_files))
-            .or(fetch_post))))),
+            .or(fetch_post)))))
+        .with(log),
     )
     .run(([0, 0, 0, 0], 3030))
     .await;
