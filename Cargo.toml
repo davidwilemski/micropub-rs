@@ -29,4 +29,3 @@ url = "2.1"
 # contains a impl<Rejection> From<Reject> that really aids in error
 # ergonomics (and some dependency removals/compilation speedups).
 warp = { default-features = false, git = "https://github.com/seanmonstar/warp/", ref = "5e164616" }
-
