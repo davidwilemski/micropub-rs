@@ -7,6 +7,7 @@ use log::{info, error};
 use reqwest;
 use url::form_urlencoded::parse;
 use serde::Deserialize;
+use serde_json::json;
 use thiserror::Error;
 use warp::http::StatusCode;
 use warp::{reject, Rejection};
@@ -365,13 +366,20 @@ fn get_latest_post_id(conn: &SqliteConnection) -> Result<i32, diesel::result::Er
 pub struct MicropubHandler<DB: WithDB> {
     http_client: reqwest::Client,
     db: DB,
+    config: serde_json::Value,
 }
 
 impl MicropubHandler<MicropubDB> {
-    pub fn new(pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>) -> Self {
+    pub fn new(pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>, media_endpoint: String) -> Self {
+        // TODO probably make this a struct down the road?
+        let config = json!({
+            "media-endpoint": media_endpoint,
+        });
+
         let handler = MicropubHandler {
             http_client: reqwest::Client::new(),
             db: MicropubDB::new(pool),
+            config: config,
         };
 
         handler
@@ -407,6 +415,35 @@ impl MicropubHandler<MicropubDB> {
                 format!("https://davidwilemski.com/{}", slug)
             )
         )
+    }
+
+    pub async fn handle_query(
+        &self,
+        auth: String,
+        query: Vec<(String, String)>,
+    ) -> Result<impl warp::Reply, Rejection> {
+        // looking for ?q=config
+        let is_query = query.iter().find_map(|(header, value)| {
+            if header == "q" && value == "config" {
+                Some(value)
+            } else {
+                None
+            }
+        });
+        if let Some(_) = is_query {
+            // verify auth
+            let validate_response = self.verify_auth(&auth).await?;
+
+            if validate_response.me != crate::HOST_WEBSITE {
+                return Err(reject::custom(NotAuthorized));
+            }
+
+            // return media endpoint
+            return Ok(self.config.to_string())
+        }
+
+        // TODO handle other types of queries like content queries
+        return Err(reject::not_found());
     }
 
     /// Given an content type and body bytes, parse body and create post entry in the database.
