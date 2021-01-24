@@ -1,13 +1,18 @@
-FROM rust:1.49
-
-ARG tag=master
+FROM rust:1.49 AS builder
 
 RUN mkdir -p /opt/micropub
 WORKDIR /opt/micropub
+RUN mkdir micropub-rs
 RUN mkdir template
 
-RUN git clone https://github.com/davidwilemski/micropub-rs
+COPY . ./micropub-rs/
 WORKDIR /opt/micropub/micropub-rs
-RUN git checkout master && git pull && git checkout $tag
 
 RUN cargo build --release
+
+FROM debian:stable
+
+RUN apt update && apt install -y openssl libsqlite3-dev
+
+RUN mkdir -p /opt/micropub/bin
+COPY --from=builder /opt/micropub/micropub-rs/target/release/server /opt/micropub/bin/server
