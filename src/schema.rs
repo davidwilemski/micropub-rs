@@ -21,10 +21,10 @@ table! {
         entry_type -> Text,
         name -> Nullable<Text>,
         content -> Nullable<Text>,
-        content_type -> Nullable<Text>,
         client_id -> Nullable<Text>,
         created_at -> Text,
         updated_at -> Text,
+        content_type -> Nullable<Text>,
         bookmark_of -> Nullable<Text>,
     }
 }
