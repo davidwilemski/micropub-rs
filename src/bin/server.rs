@@ -48,6 +48,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let dbfile = env::var("DATABASE_URL")?;
     let template_dir = env::var(TEMPLATE_DIR_VAR)?;
+    let media_endpoint = env::var(MEDIA_ENDPOINT_VAR)?;
     let dbpool = Arc::new(micropub_rs::new_dbconn_pool(&dbfile)?);
     info!("created dbpool from {:?}", dbfile);
 
@@ -69,7 +70,13 @@ async fn main() -> Result<(), anyhow::Error> {
     let atom_ctx = base_ctx.clone();
 
     let templates = Arc::new(templates::Templates::new(tera, base_ctx));
-    let micropub_handler = Arc::new(handlers::MicropubHandler::new(dbpool.clone()));
+    let micropub_post_handler = Arc::new(
+        handlers::MicropubHandler::new(dbpool.clone(), media_endpoint.clone())
+    );
+    // TODO unify these two via routing?
+    let micropub_query_handler = Arc::new(
+        handlers::MicropubHandler::new(dbpool.clone(), media_endpoint)
+    );
     let fetch_handler = Arc::new(handlers::FetchHandler::new(
         dbpool.clone(),
         templates.clone(),
@@ -92,17 +99,25 @@ async fn main() -> Result<(), anyhow::Error> {
     ));
     let static_files = warp::filters::fs::dir(std::path::Path::new(&template_dir).join("static"));
 
-    let micropub = warp::path!("micropub")
+    let micropub_post = warp::path!("micropub")
         .and(warp::post())
         .and(warp::filters::header::optional::<String>("Content-Type"))
         .and(warp::header::<String>("Authorization"))
         .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
         .and(warp::body::bytes())
         .and_then(move |ct, a, body| {
-            let h = micropub_handler.clone();
+            let h = micropub_post_handler.clone();
             async move { h.handle_post(ct, a, body).await }
         })
         .recover(handle_rejection);
+    let micropub_get = warp::path!("micropub")
+        .and(warp::get())
+        .and(warp::header::<String>("Authorization"))
+        .and(warp::filters::query::query())
+        .and_then(move |auth, query| {
+            let h = micropub_query_handler.clone();
+            async move { h.handle_query(auth, query).await }
+        });
 
     let fetch_post = warp::any()
         .and(warp::path::full())
@@ -140,9 +155,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let log = warp::log("micropub::server");
 
     warp::serve(
-        index.or(micropub.or(tag_archives.or(archives.or(atom
+        index.or(micropub_post.or(micropub_get.or(tag_archives.or(archives.or(atom
             .or(warp::path("theme").and(static_files))
-            .or(fetch_post)))))
+            .or(fetch_post))))))
         .with(log),
     )
     .run(([0, 0, 0, 0], 3030))

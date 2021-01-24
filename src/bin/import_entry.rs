@@ -13,7 +13,7 @@ use micropub_rs::handlers;
 async fn main() -> Result<(), anyhow::Error> {
     let dbfile = env::var("DATABASE_URL")?;
     let dbpool = Arc::new(micropub_rs::new_dbconn_pool(&dbfile)?);
-    let micropub_handler = handlers::MicropubHandler::new(dbpool);
+    let micropub_handler = handlers::MicropubHandler::new(dbpool, "".into());
 
     // read in body from stdin
     let mut body = String::new();
