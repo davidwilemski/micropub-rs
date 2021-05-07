@@ -132,7 +132,7 @@ async fn main() -> Result<(), anyhow::Error> {
             async move { h.get().await }
         });
 
-    let index = warp::path::end().and(warp::get()).and_then(move || {
+    let index = warp::path::end().and(warp::get().or(warp::head())).and_then(move |_| {
         let h = index_handler.clone();
         async move { h.get().await }
     });
