@@ -7,6 +7,17 @@ table! {
 }
 
 table! {
+    media (id) {
+        id -> Integer,
+        hex_digest -> Text,
+        filename -> Nullable<Text>,
+        content_type -> Nullable<Text>,
+        created_at -> Text,
+        updated_at -> Text,
+    }
+}
+
+table! {
     original_blobs (id) {
         id -> Integer,
         post_id -> Integer,
@@ -34,6 +45,7 @@ joinable!(original_blobs -> posts (post_id));
 
 allow_tables_to_appear_in_same_query!(
     categories,
+    media,
     original_blobs,
     posts,
 );

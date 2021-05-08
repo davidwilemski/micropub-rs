@@ -73,8 +73,11 @@ async fn main() -> Result<(), anyhow::Error> {
     let micropub_post_handler = Arc::new(
         handlers::MicropubHandler::new(dbpool.clone(), media_endpoint.clone())
     );
-    // TODO unify these two via routing?
+    // TODO unify these three via routing?
     let micropub_query_handler = Arc::new(
+        handlers::MicropubHandler::new(dbpool.clone(), media_endpoint.clone())
+    );
+    let micropub_media_handler = Arc::new(
         handlers::MicropubHandler::new(dbpool.clone(), media_endpoint)
     );
     let fetch_handler = Arc::new(handlers::FetchHandler::new(
@@ -111,12 +114,21 @@ async fn main() -> Result<(), anyhow::Error> {
         })
         .recover(handle_rejection);
     let micropub_get = warp::path!("micropub")
-        .and(warp::get())
+        .and(warp::get().or(warp::head()))
         .and(warp::header::<String>("Authorization"))
         .and(warp::filters::query::query())
-        .and_then(move |auth, query| {
+        .and_then(move |_method, auth, query| {
             let h = micropub_query_handler.clone();
             async move { h.handle_query(auth, query).await }
+        });
+    let media_post = warp::path!("media")
+        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
+        .and(warp::post())
+        .and(warp::header::<String>("Authorization"))
+        .and(warp::filters::multipart::form().max_length(MAX_CONTENT_LENGTH))
+        .and_then(move |auth, multipart_data| {
+            let h = micropub_media_handler.clone();
+            async move { h.handle_media_upload(auth, multipart_data).await }
         });
 
     let fetch_post = warp::any()
@@ -147,7 +159,7 @@ async fn main() -> Result<(), anyhow::Error> {
             async move { h.get().await }
         });
 
-    let index = warp::path::end().and(warp::get()).and_then(move || {
+    let index = warp::path::end().and(warp::get().or(warp::head())).and_then(move |_method| {
         let h = index_handler.clone();
         async move { h.get().await }
     });
@@ -155,9 +167,9 @@ async fn main() -> Result<(), anyhow::Error> {
     let log = warp::log("micropub::server");
 
     warp::serve(
-        index.or(micropub_post.or(micropub_get.or(tag_archives.or(archives.or(atom
+        index.or(micropub_post.or(micropub_get.or(media_post.or(tag_archives.or(archives.or(atom
             .or(warp::path("theme").and(static_files))
-            .or(fetch_post))))))
+            .or(fetch_post)))))))
         .with(log),
     )
     .run(([0, 0, 0, 0], 3030))

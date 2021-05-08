@@ -1,6 +1,6 @@
 [package]
 name = "micropub_rs"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["David Wilemski <david@wilemski.org>"]
 edition = "2018"
 
@@ -14,6 +14,7 @@ anyhow = "1.0"
 bytes = "0.5"
 chrono = "0.4"
 diesel = { version = "1.4", features = ["sqlite", "r2d2"] }
+futures = "0.3"
 indoc = "1.0"
 log = "0.4"
 env_logger = "0.8"
@@ -28,4 +29,4 @@ url = "2.1"
 # FIXME update once something higher than warp 0.2.5 is released. It
 # contains a impl<Rejection> From<Reject> that really aids in error
 # ergonomics (and some dependency removals/compilation speedups).
-warp = { default-features = false, git = "https://github.com/seanmonstar/warp/", ref = "5e164616" }
+warp = { default-features = false, features = ["multipart"], git = "https://github.com/seanmonstar/warp/", ref = "5e164616" }

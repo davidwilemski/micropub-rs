@@ -23,3 +23,7 @@ impl reject::Reject for ValidateResponseDeserializeError {}
 #[derive(Debug)]
 pub struct NotAuthorized;
 impl reject::Reject for NotAuthorized {}
+
+#[derive(Debug)]
+pub struct MediaUploadError;
+impl reject::Reject for MediaUploadError {}
