@@ -1,22 +1,26 @@
 use std::sync::Arc;
 
+use bytes::BufMut;
 use chrono::Local;
 use diesel::prelude::*;
 use diesel::r2d2;
+use futures::{StreamExt, TryStreamExt};
 use log::{info, error};
 use reqwest;
 use url::form_urlencoded::parse;
 use serde::Deserialize;
 use serde_json::json;
 use thiserror::Error;
-use warp::http::StatusCode;
+use warp::http::{Response, StatusCode};
+use warp::http::{header as http_header};
 use warp::{reject, Rejection};
+use warp::multipart;
 
 use crate::errors::*;
 use crate::handler::{MicropubDB, WithDB};
-use crate::models::{NewCategory, NewOriginalBlob, NewPost};
+use crate::models::{NewCategory, NewOriginalBlob, NewPost, NewMediaUpload};
 use crate::post_util;
-use crate::schema::{categories, original_blobs, posts};
+use crate::schema::{categories, original_blobs, posts, media};
 
 #[derive(Debug, Error)]
 enum MicropubFormError {
@@ -423,6 +427,7 @@ impl MicropubHandler<MicropubDB> {
         query: Vec<(String, String)>,
     ) -> Result<impl warp::Reply, Rejection> {
         // looking for ?q=config
+        info!("query: {:?}", query);
         let is_query = query.iter().find_map(|(header, value)| {
             if header == "q" && value == "config" {
                 Some(value)
@@ -444,6 +449,144 @@ impl MicropubHandler<MicropubDB> {
 
         // TODO handle other types of queries like content queries
         return Err(reject::not_found());
+    }
+
+    pub async fn handle_media_upload(
+        &self,
+        auth: String,
+        multipart_data: multipart::FormData,
+    ) -> Result<impl warp::Reply, Rejection> {
+        // verify auth
+        let validate_response = self.verify_auth(&auth).await?;
+
+        if validate_response.me != crate::HOST_WEBSITE {
+            return Err(reject::custom(NotAuthorized));
+        }
+
+        // find Part that has the name 'file'
+        let maybe_file = Box::pin(multipart_data.filter_map(|maybe_part| async {
+            match maybe_part {
+                Ok(part) if part.name() == "file" => Some(Ok(part)),
+                Ok(_) => None,
+                Err(e) => {
+                    error!("Error reading multipart form: {:?}", e);
+                    Some(Err(reject::custom(MediaUploadError)))
+                }
+            }
+        }))
+        .next()
+        .await;
+
+        match maybe_file {
+            // now try to read in part data
+            Some(Ok(part)) => {
+                let filename: Option<String> = part.filename().map(|s| s.into());
+                let content_type: Option<String> = part.content_type().map(|s| s.into());
+                // read in upload and PUT to rustyblobjectstore backend
+                // TODO it seems possible to pass the Stream of parts directly
+                // to reqwest rather than buffering in memory. We should do that here.
+                let contents: Vec<u8> = part.stream()
+                    .try_fold(Vec::new(), |mut acc, data| {
+                        acc.put(data);
+                        async move { Ok(acc) }
+                    })
+                    .await
+                    .map_err(|e| {
+                        error!("error accumulating request body: {:?}", e);
+                        reject::custom(MediaUploadError)
+                    })?;
+                let client = reqwest::Client::new();
+                let resp = client.put("http://rustyblobjectstore:3031/")
+                    .body(contents)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        error!("error in PUT to rustyblobjectstore: {:?}", e);
+                        reject::custom(MediaUploadError)
+                    })?;
+
+                let status = resp.status();
+                if status != 201 && status != 200 {
+                    error!("unsuccessful response status from rustyblobjectstore: {:?}", status);
+                    return Err(reject::custom(MediaUploadError))
+                }
+
+                // get the key of the blob to construct the URL used for fetching
+                let hex_digest = resp.text()
+                    .await
+                    .map_err(|e| {
+                        error!("failure to read response body from rustyblobjectstore: {:?}", e);
+                        reject::custom(MediaUploadError)
+                    })?;
+
+                let new_media = NewMediaUpload {
+                    hex_digest: &hex_digest,
+                    filename: filename.as_deref(),
+                    content_type: content_type.as_deref(),
+                };
+                let conn = self.db.dbconn()?;
+                diesel::insert_into(media::table)
+                    .values(&new_media)
+                    .execute(&conn)
+                    .map_err(|e| {
+                        error!("error inserting hex digest into media uploads: {:?}", e);
+                        reject::custom(DBError)
+                    })?;
+
+
+                // TODO it seems like the Location header is not being respected due to the body
+                // content of empty string?
+                let result = Ok(
+                    Response::builder()
+                        .status(StatusCode::CREATED)
+                        .header(
+                            // XXX the http crate forces header names to be lower case, even if you
+                            // pass in a string that contains upper case characters. The 1.x
+                            // standard says header names should be case insensitive and the 2.0
+                            // standard forces lower case I guess.  The problem is that Quill is
+                            // currently case sensitive and won't find the location header:
+                            // https://github.com/aaronpk/Quill/blob/cdbc6aa4f305529f618e19b5af31ed896fb0a673/lib/helpers.php#L123
+                            // A proxy may be needed to resolve this if a fix cannot be pushed to
+                            // the quill client.
+                            http_header::LOCATION,
+                            format!("https://davidwilemski.com/media/{}", hex_digest)
+                        )
+                        .body(warp::hyper::Body::empty())
+                        .map_err(|e| {
+                            error!("error building response: {:?}", e);
+                            reject::custom(MediaUploadError)
+                        })?
+                    // Box::new(warp::reply::with_status(
+                    //     Box::new(warp::reply::with_header(
+                    //         warp::reply::reply(),
+                    //         "Location",
+                    //         // TODO figure out media path/subdomain format
+                    //     )),
+                    //     StatusCode::CREATED,
+                    // ))
+                );
+                info!("returning 201 on media upload: {:?}", result);
+                result
+
+            },
+            // Some error reading multipart form parts
+            Some(Err(e)) => Err(e),
+            // No 'file' part found in multipart form
+            _ => Ok(
+                    Response::builder()
+                        .status(StatusCode::BAD_REQUEST)
+                        .body(warp::hyper::Body::empty())
+                        .map_err(|e| {
+                            error!("error building response: {:?}", e);
+                            reject::custom(MediaUploadError)
+                        })?
+                )
+        }
+
+        // record rustyblobjectstore response (the blobject key), create media table entry respond
+        // with media URL (micropub-rs needs to handle this still because we want to proxy the
+        // rustyblobjectstore backend).
+        // Ok("test")
     }
 
     /// Given an content type and body bytes, parse body and create post entry in the database.

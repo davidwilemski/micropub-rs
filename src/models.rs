@@ -110,3 +110,11 @@ pub struct NewOriginalBlob<'a> {
     pub post_id: i32,
     pub post_blob: &'a [u8],
 }
+
+#[derive(Debug, Insertable)]
+#[table_name = "media"]
+pub struct NewMediaUpload<'a> {
+    pub hex_digest: &'a str,
+    pub filename: Option<&'a str>,
+    pub content_type: Option<&'a str>
+}

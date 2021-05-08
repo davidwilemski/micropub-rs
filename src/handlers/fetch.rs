@@ -4,6 +4,7 @@ use diesel::prelude::*;
 use diesel::r2d2;
 use log::{debug, info, error};
 use warp::{reject, Rejection};
+use warp::http::{header as http_header, Response};
 
 use crate::errors::*;
 use crate::handler::{MicropubDB, WithDB};
@@ -15,6 +16,7 @@ use crate::view_models::{Date as DateView, Post as PostView};
 pub struct FetchHandler<DB: WithDB> {
     db: DB,
     templates: Arc<templates::Templates>,
+    client: reqwest::Client,
 }
 
 impl FetchHandler<MicropubDB> {
@@ -25,6 +27,7 @@ impl FetchHandler<MicropubDB> {
         FetchHandler {
             db: MicropubDB::new(pool),
             templates,
+            client: reqwest::Client::new(),
         }
     }
 
@@ -65,5 +68,47 @@ impl FetchHandler<MicropubDB> {
                 reject::custom(TemplateError)
             })?;
         Ok(warp::reply::html(page))
+    }
+
+    pub async fn fetch_media(&self, media_id: &str) -> Result<impl warp::Reply, Rejection> {
+        let resp = self.client.get(format!("http://rustyblobjectstore:3031/{}", media_id))
+            .send()
+            .await
+            .map_err(|e| {
+                error!("error in GET to rustyblobjectstore: {:?}", e);
+                reject::custom(MediaFetchError)
+            })?;
+
+        use crate::schema::media::dsl::*;
+        let conn = self.db.dbconn()?;
+        let media_content_type: Option<String> = media.select(content_type)
+            .filter(hex_digest.eq(media_id))
+            .first(&conn)
+            .map_err(|e| self.db.handle_errors(e))?;
+
+        if resp.status() != 200 {
+            Err(warp::reject::not_found())
+        } else {
+            let media_body = resp.bytes()
+                .await
+                .map_err(|e| {
+                    error!("error in receiving body as bytes(): {:?}", e);
+                    reject::custom(MediaFetchError)
+                })?;
+            Ok(
+                Response::builder()
+                    .status(200)
+                    .header(
+                        http_header::CONTENT_TYPE,
+                        media_content_type
+                            .unwrap_or("application/octet-stream".into())
+                    )
+                    .body(media_body)
+                    .map_err(|e| {
+                        error!("error building media response: {:?}", e);
+                        reject::custom(MediaFetchError)
+                    })?
+            )
+        }
     }
 }
