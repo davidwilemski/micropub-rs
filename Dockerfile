@@ -1,4 +1,4 @@
-FROM rust:1.49 AS builder
+FROM rust:1.55 AS builder
 
 RUN mkdir -p /opt/micropub
 WORKDIR /opt/micropub
