@@ -6,6 +6,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2021-09-10
+### Added
+- Support media upload and fetching.
+- Support micropub config query.
+
+### Fixed
+- Allow HEAD requests on index handler.
+
+### Changed
+- Add ca-certificates package.
+- Schema file order shuffle.
+- Use build image to reduce published image size.
+- Remove template checkout from docker build.
+- Release 0.4.0.
+
 ## [0.4.0] - 2021-01-11
 ### Added
 - Add bookmark-of support for bookmark style posts.
@@ -123,7 +138,8 @@ to import from a Pelican static site blog.
 - Clean up imports.
 - Initial commit.
 
-[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.4.0...HEAD
+[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.5.0...HEAD
+[0.5.0]: git@github.com:/davidwilemski/micropub-rs/compare/0.4.0...0.5.0
 [0.4.0]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.2...0.4.0
 [0.3.2]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.1...0.3.2
 [0.3.1]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.0...0.3.1
