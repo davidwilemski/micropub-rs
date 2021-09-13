@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2021-09-12
+### Added
+- Implement micropub photo property.
+
+### Fixed
+- Add migration for create media table.
+
+### Changed
+- Use pre-made Rust CI Action.
+- Use rust 1.55 as build toolchain in Dockerfile.
+
 ## [0.5.0] - 2021-09-10
 ### Added
 - Support media upload and fetching.
@@ -138,7 +149,8 @@ to import from a Pelican static site blog.
 - Clean up imports.
 - Initial commit.
 
-[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.5.0...HEAD
+[Unreleased]: git@github.com:davidwilemski/micropub-rs/compare/0.5.1...HEAD
+[0.5.1]: git@github.com:/davidwilemski/micropub-rs/compare/0.5.0...0.5.1
 [0.5.0]: git@github.com:/davidwilemski/micropub-rs/compare/0.4.0...0.5.0
 [0.4.0]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.2...0.4.0
 [0.3.2]: git@github.com:/davidwilemski/micropub-rs/compare/0.3.1...0.3.2
