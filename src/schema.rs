@@ -26,6 +26,15 @@ table! {
 }
 
 table! {
+    photos (id) {
+        id -> Integer,
+        post_id -> Integer,
+        url -> Text,
+        alt -> Nullable<Text>,
+    }
+}
+
+table! {
     posts (id) {
         id -> Integer,
         slug -> Text,
@@ -42,10 +51,12 @@ table! {
 
 joinable!(categories -> posts (post_id));
 joinable!(original_blobs -> posts (post_id));
+joinable!(photos -> posts (post_id));
 
 allow_tables_to_appear_in_same_query!(
     categories,
     media,
     original_blobs,
+    photos,
     posts,
 );

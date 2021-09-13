@@ -45,15 +45,29 @@ impl AtomHandler<MicropubDB> {
         let post_ids = posts.iter().map(|p| p.id).collect::<Vec<i32>>();
         let mut query_result: Vec<(i32, String)> = categories
             .select((post_id, category))
-            .filter(post_id.eq_any(post_ids))
+            .filter(post_id.eq_any(&post_ids))
             .get_results(&conn)
             .map_err(|e| self.db.handle_errors(e))?;
+
         query_result.sort_by_key(|item| item.0);
         let mut tags: HashMap<i32, Vec<String>> = HashMap::new();
         for (post_id_, tag) in query_result {
             tags.entry(post_id_)
                 .or_default()
                 .push(tag);
+        }
+
+        use crate::schema::photos::dsl as photos_dsl;
+        let photos: Vec<(i32, String, Option<String>)> = photos_dsl::photos
+            .select((photos_dsl::post_id, photos_dsl::url, photos_dsl::alt))
+            .filter(photos_dsl::post_id.eq_any(&post_ids))
+            .get_results(&conn)
+            .map_err(|e| self.db.handle_errors(e))?;
+        let mut photos_by_post: HashMap<i32, Vec<(String, Option<String>)>> = HashMap::new();
+        for (post_id_, url, alt) in photos {
+            photos_by_post.entry(post_id_)
+                .or_default()
+                .push((url, alt));
         }
 
         for mut post in posts {
@@ -69,7 +83,7 @@ impl AtomHandler<MicropubDB> {
             post.created_at = datetime.to_rfc3339();
 
             let pid = post.id;
-            let post_view = PostView::new_from(post, tags.remove(&pid).unwrap_or(vec![]), DateView::from(&datetime));
+            let post_view = PostView::new_from(post, tags.remove(&pid).unwrap_or(vec![]), DateView::from(&datetime), photos_by_post.remove(&pid).unwrap_or(vec![]));
             posts_views.push(post_view);
         }
 

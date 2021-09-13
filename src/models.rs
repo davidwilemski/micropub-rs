@@ -118,3 +118,11 @@ pub struct NewMediaUpload<'a> {
     pub filename: Option<&'a str>,
     pub content_type: Option<&'a str>
 }
+
+#[derive(Debug, Insertable)]
+#[table_name = "photos"]
+pub struct NewPhoto<'a> {
+    pub post_id: i32,
+    pub url: &'a str,
+    pub alt: Option<&'a str>,
+}

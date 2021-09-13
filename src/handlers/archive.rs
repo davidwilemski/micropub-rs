@@ -68,7 +68,7 @@ impl ArchiveHandler<MicropubDB> {
             post.created_at = datetime.to_rfc3339();
 
             let pid = post.id;
-            let post_view = PostView::new_from(post, tags.remove(&pid).unwrap_or(vec![]), DateView::from(&datetime));
+            let post_view = PostView::new_from(post, tags.remove(&pid).unwrap_or(vec![]), DateView::from(&datetime), vec![]);
             posts_views.push(post_view);
         }
 

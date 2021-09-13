@@ -46,6 +46,13 @@ impl IndexHandler<MicropubDB> {
             .get_results(&conn)
             .map_err(|e| self.db.handle_errors(e))?;
 
+        use crate::schema::photos::dsl as photos_dsl;
+        let photos: Vec<(String, Option<String>)> = photos_dsl::photos
+            .select((photos_dsl::url, photos_dsl::alt))
+            .filter(photos_dsl::post_id.eq(post.id))
+            .get_results(&conn)
+            .map_err(|e| self.db.handle_errors(e))?;
+
         // Only on main page for indieauth login
         let template = self.templates
             .add_context("SOCIAL", &[crate::SOCIAL])
@@ -62,7 +69,7 @@ impl IndexHandler<MicropubDB> {
             })?;
         post.created_at = datetime.to_rfc3339();
 
-        let post_view = PostView::new_from(post, tags, DateView::from(&datetime));
+        let post_view = PostView::new_from(post, tags, DateView::from(&datetime), photos);
         let articles_page = ArticlesPage { number: 1, object_list: vec![post_view] };
         let page = template
             .add_context("articles_page", &articles_page)

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use bytes::BufMut;
@@ -8,7 +9,7 @@ use futures::{StreamExt, TryStreamExt};
 use log::{info, error};
 use reqwest;
 use url::form_urlencoded::parse;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use thiserror::Error;
 use warp::http::{Response, StatusCode};
@@ -18,9 +19,9 @@ use warp::multipart;
 
 use crate::errors::*;
 use crate::handler::{MicropubDB, WithDB};
-use crate::models::{NewCategory, NewOriginalBlob, NewPost, NewMediaUpload};
+use crate::models::{NewCategory, NewOriginalBlob, NewPost, NewPhoto, NewMediaUpload};
 use crate::post_util;
-use crate::schema::{categories, original_blobs, posts, media};
+use crate::schema::{categories, original_blobs, posts, photos, media};
 
 #[derive(Debug, Error)]
 enum MicropubFormError {
@@ -33,7 +34,9 @@ enum MicropubFormError {
 enum MicropubPropertyValue {
     Value(String),
     Values(Vec<String>),
+    Map(HashMap<String, MicropubPropertyValue>),
     VecMap(Vec<std::collections::HashMap<String, MicropubPropertyValue>>),
+    ValueVec(Vec<MicropubPropertyValue>),
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -54,6 +57,13 @@ struct MicropubJSONCreate {
     #[serde(rename = "type")]
     entry_type: Vec<String>,
     properties: MicropubProperties,
+}
+
+// An earlier take on this was an enum with Url and Props variants
+#[derive(Clone, PartialEq, Debug, Deserialize, Serialize)]
+struct Photo {
+    url: String,
+    alt: Option<String>,
 }
 
 // TODO:
@@ -79,6 +89,7 @@ struct MicropubFormBuilder {
     updated_at: Option<String>,
     slug: Option<String>,
     bookmark_of: Option<String>,
+    photos: Option<Vec<Photo>>,
 }
 
 fn set_from_prop<F>(builder: &mut MicropubFormBuilder, setter: &mut F, props: &MicropubProperties, prop: &str) -> bool
@@ -112,6 +123,7 @@ impl MicropubFormBuilder {
             updated_at: None,
             slug: None,
             bookmark_of: None,
+            photos: None,
         }
     }
 
@@ -148,6 +160,7 @@ impl MicropubFormBuilder {
                     MicropubPropertyValue::Value(val) => {
                         builder.set_content(val.clone());
                     }
+                    _ => error!("unexpected content type")
                 };
             })),
             (&["name"][..], Box::new(|builder: &mut MicropubFormBuilder, val: MicropubPropertyValue| {
@@ -211,6 +224,9 @@ impl MicropubFormBuilder {
                     _ => eprintln!("unexpected bookmark_of property type"),
                 }
             })),
+            (&["photo"][..], Box::new(|builder: &mut MicropubFormBuilder, props: MicropubPropertyValue| {
+                builder.on_photo_props(props);
+            })),
         ];
 
         for (props, setter) in prop_setter_pairs {
@@ -232,6 +248,7 @@ impl MicropubFormBuilder {
             updated_at: self.updated_at,
             slug: self.slug,
             bookmark_of: self.bookmark_of,
+            photos: self.photos,
         })
     }
 
@@ -274,6 +291,63 @@ impl MicropubFormBuilder {
     fn set_bookmark_of(&mut self, val: String) {
         self.bookmark_of = Some(val)
     }
+
+    fn add_photo(&mut self, val: Photo) {
+        if let None = self.photos {
+            self.photos = Some(vec![]);
+        }
+
+        self.photos.as_mut().map(|photos| photos.push(val));
+    }
+
+    fn on_photo_props(
+        &mut self,
+        props: MicropubPropertyValue) 
+    {
+        match props {
+            MicropubPropertyValue::Value(photo_url) => {
+                self.add_photo(Photo{url: photo_url, alt: None});
+            },
+            MicropubPropertyValue::Values(mut photo_urls) => {
+                photo_urls.drain(..).for_each(|photo_url| {
+                    self.add_photo(Photo{url: photo_url, alt: None});
+                });
+            },
+            MicropubPropertyValue::Map(mut props) => {
+                if let Some(MicropubPropertyValue::Value(url)) = props.remove("value") {
+                    let alt = match props.remove("alt") {
+                        Some(MicropubPropertyValue::Value(alt)) => Some(alt),
+                        _ => None
+                    };
+                    let photo = Photo {
+                        url: url,
+                        alt: alt,
+                    };
+                    self.add_photo(photo);
+                }
+            },
+            MicropubPropertyValue::VecMap(mut props_vec) => {
+                for mut props in props_vec.drain(..) {
+                    if let Some(MicropubPropertyValue::Value(url)) = props.remove("value") {
+                        let alt = match props.remove("alt") {
+                            Some(MicropubPropertyValue::Value(alt)) => Some(alt),
+                            _ => None
+                        };
+                        let photo = Photo {
+                            url: url,
+                            alt: alt,
+                        };
+                        self.add_photo(photo);
+                    }
+                }
+            },
+            MicropubPropertyValue::ValueVec(photos) => {
+                for photo in photos {
+                    self.on_photo_props(photo)
+                }
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -311,6 +385,10 @@ struct MicropubForm {
 
     /// Indicates entry is a bookmark type. String should be a URL.
     bookmark_of: Option<String>,
+
+    /// Photos included with the entry
+    photos: Option<Vec<Photo>>,
+
     // TODO: support additional fields and properties
 }
 
@@ -660,6 +738,23 @@ impl MicropubHandler<MicropubDB> {
                 .values(original_blob)
                 .execute(conn)?;
 
+            if let Some(ref photos) = form.photos {
+                let new_photos: Vec<NewPhoto> = photos
+                    .iter()
+                    .map(|p| NewPhoto {
+                        post_id: post_id,
+                        url: p.url.as_str(),
+                        alt: p.alt.as_ref().map(|a| a.as_str()),
+                    })
+                    .collect();
+
+                for p in new_photos {
+                    diesel::insert_into(photos::table)
+                        .values(p)
+                        .execute(conn)?;
+                }
+            }
+
             Ok(())
         })?;
 
@@ -703,7 +798,7 @@ impl MicropubHandler<MicropubDB> {
 
 #[cfg(test)]
 mod test {
-    use super::MicropubForm;
+    use super::{Photo, MicropubForm};
 
     #[test]
     fn micropub_form_decode_category_as_array() {
@@ -719,6 +814,7 @@ mod test {
             updated_at: None,
             slug: None,
             bookmark_of: None,
+            photos: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -738,6 +834,7 @@ mod test {
             updated_at: None,
             slug: None,
             bookmark_of: None,
+            photos: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -757,6 +854,7 @@ mod test {
             updated_at: None,
             slug: None,
             bookmark_of: None,
+            photos: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -776,6 +874,7 @@ mod test {
             updated_at: None,
             slug: None,
             bookmark_of: None,
+            photos: None,
         };
 
         assert_eq!(form, MicropubForm::from_form_bytes(&qs[..]).unwrap());
@@ -805,6 +904,7 @@ mod test {
             updated_at: None,
             slug: Some("quill-test".into()),
             bookmark_of: None,
+            photos: None,
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
@@ -824,6 +924,7 @@ mod test {
             updated_at: None,
             slug: None,
             bookmark_of: Some("https://davidwilemski.com".into()),
+            photos: None,
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
@@ -843,6 +944,7 @@ mod test {
             updated_at: None,
             slug: Some("markdown-test".into()),
             bookmark_of: None,
+            photos: None,
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
@@ -862,6 +964,61 @@ mod test {
             updated_at: None,
             slug: Some("publish-date-slug".into()),
             bookmark_of: None,
+            photos: None,
+        };
+
+        assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
+    }
+
+    #[test]
+    fn micropub_form_decode_photo_property() {
+        let bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"content\":[\"test upload\"],\"photo\":[{\"value\":\"https:\\/\\/davidwilemski.com\\/media\\/2a2ae02f9addf60f708298221e661db15b8afc340d8b934bc94b9e37f293074f\",\"alt\":\"test upload\"}]}}";
+        let form = MicropubForm {
+            access_token: None,
+            name: None,
+            h: "entry".into(),
+            content: "test upload".into(),
+            content_type: None,
+            category: vec![],
+            created_at: None,
+            updated_at: None,
+            slug: None,
+            bookmark_of: None,
+            photos: Some(vec![
+                Photo {
+                    url: "https://davidwilemski.com/media/2a2ae02f9addf60f708298221e661db15b8afc340d8b934bc94b9e37f293074f".into(),
+                    alt: Some("test upload".into()),
+                }
+            ]),
+        };
+
+        assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
+    }
+
+    #[test]
+    fn micropub_form_decode_multiple_photo_property() {
+        let bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"content\":[\"test upload\"],\"photo\":[{\"value\":\"https:\\/\\/davidwilemski.com\\/media\\/2a2ae02f9addf60f708298221e661db15b8afc340d8b934bc94b9e37f293074f\",\"alt\":\"test upload\"},\"https:\\/\\/davidwilemski.com\\/media\\/df1dfea9b0a062e8e27ee6fed1df597995547e16a73570107ff475b33d59f4fb\"]}}";
+        let form = MicropubForm {
+            access_token: None,
+            name: None,
+            h: "entry".into(),
+            content: "test upload".into(),
+            content_type: None,
+            category: vec![],
+            created_at: None,
+            updated_at: None,
+            slug: None,
+            bookmark_of: None,
+            photos: Some(vec![
+                Photo {
+                    url: "https://davidwilemski.com/media/2a2ae02f9addf60f708298221e661db15b8afc340d8b934bc94b9e37f293074f".into(),
+                    alt: Some("test upload".into()),
+                },
+                Photo {
+                    url: "https://davidwilemski.com/media/df1dfea9b0a062e8e27ee6fed1df597995547e16a73570107ff475b33d59f4fb".into(),
+                    alt: None,
+                }
+            ]),
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());

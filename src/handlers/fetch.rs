@@ -42,10 +42,17 @@ impl FetchHandler<MicropubDB> {
             },
         )?;
 
-        use crate::schema::categories::dsl::*;
-        let tags: Vec<String> = categories
-            .select(category)
-            .filter(post_id.eq(post.id))
+        use crate::schema::categories::dsl as category_dsl;
+        let tags: Vec<String> = category_dsl::categories
+            .select(category_dsl::category)
+            .filter(category_dsl::post_id.eq(post.id))
+            .get_results(&conn)
+            .map_err(|e| self.db.handle_errors(e))?;
+
+        use crate::schema::photos::dsl as photos_dsl;
+        let photos: Vec<(String, Option<String>)> = photos_dsl::photos
+            .select((photos_dsl::url, photos_dsl::alt))
+            .filter(photos_dsl::post_id.eq(post.id))
             .get_results(&conn)
             .map_err(|e| self.db.handle_errors(e))?;
 
@@ -59,7 +66,7 @@ impl FetchHandler<MicropubDB> {
             })?;
         post.created_at = datetime.to_rfc3339();
 
-        let post_view = PostView::new_from(post, tags, DateView::from(&datetime));
+        let post_view = PostView::new_from(post, tags, DateView::from(&datetime), photos);
         let page = self.templates
             .add_context("article", &post_view)
             .render("article.html")
