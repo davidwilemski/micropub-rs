@@ -8,6 +8,7 @@ pub mod constants;
 pub mod errors;
 pub mod handler;
 pub mod handlers;
+pub mod media_util;
 pub mod models;
 pub mod post_util;
 pub mod schema;

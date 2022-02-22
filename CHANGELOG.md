@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2022-02-22
+### Added
+- Strip EXIF tags from images when upload format is identifiable (ImageMagick dependency)
+- Nix config for building the project and building a Docker image (improved management of ImageMagick dep)
+
 ## [0.6.0] - 2021-09-12
 ### Added
 - Implement micropub photo property.

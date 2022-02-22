@@ -20,7 +20,7 @@ use warp::multipart;
 use crate::errors::*;
 use crate::handler::{MicropubDB, WithDB};
 use crate::models::{NewCategory, NewOriginalBlob, NewPost, NewPhoto, NewMediaUpload};
-use crate::post_util;
+use crate::{media_util, post_util};
 use crate::schema::{categories, original_blobs, posts, photos, media};
 
 #[derive(Debug, Error)]
@@ -560,10 +560,8 @@ impl MicropubHandler<MicropubDB> {
             Some(Ok(part)) => {
                 let filename: Option<String> = part.filename().map(|s| s.into());
                 let content_type: Option<String> = part.content_type().map(|s| s.into());
-                // read in upload and PUT to rustyblobjectstore backend
-                // TODO it seems possible to pass the Stream of parts directly
-                // to reqwest rather than buffering in memory. We should do that here.
-                let contents: Vec<u8> = part.stream()
+                // read in upload
+                let mut contents: Vec<u8> = part.stream()
                     .try_fold(Vec::new(), |mut acc, data| {
                         acc.put(data);
                         async move { Ok(acc) }
@@ -573,7 +571,45 @@ impl MicropubHandler<MicropubDB> {
                         error!("error accumulating request body: {:?}", e);
                         reject::custom(MediaUploadError)
                     })?;
+
+                // Pass media contents through imagemagick's strip functionality to remove things
+                // like EXIF tags that might contain location or other private information.
+                // attempt to get format
+                let format = media_util::guess_format(&content_type.as_deref());
+                match format {
+                    // we think the content is some sort of image, strip it and reject the request
+                    // if the strip operation fails
+                    Some(f) => {
+                        info!("content-type: {}", f);
+                        info!("attempting to strip media starting with: {:?}", &contents[0..64]);
+                        info!("length of media: {}", contents.len());
+                        contents = media_util::strip_media(&contents, &f)?;
+                    }
+                    // still attempt to strip but don't reject if we fail
+                    None => {
+                        let f = "jpg";
+                        match media_util::strip_media(&contents, f) {
+                            Ok(c) => contents = c,
+                            Err(e) => {
+                                // log error but we don't need to reject the whole request at this
+                                // point because we don't know for sure the content type was
+                                // image... this is not great given that there could still be exif
+                                // data to stip in a non-image format and it could fail in this
+                                // branch.
+                                error!("error in stripping tags in unknown content-type: {:?}", e);
+                            }
+                        }
+                    }
+                };
+
+                // PUT to rustyblobjectstore backend
+                // TODO don't create new client each time so that we get things like connection
+                // pooling/reuse.
+                // Not super important for this use case given that posts (and media posts
+                // specifically) are relatively rare. For the read path, this is potentially a
+                // little bit more important.
                 let client = reqwest::Client::new();
+                // TODO make object store URL configurable
                 let resp = client.put("http://rustyblobjectstore:3031/")
                     .body(contents)
                     .send()

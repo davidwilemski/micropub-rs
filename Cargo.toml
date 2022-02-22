@@ -1,6 +1,6 @@
 [package]
 name = "micropub_rs"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["David Wilemski <david@wilemski.org>"]
 edition = "2018"
 
@@ -19,7 +19,9 @@ futures = "0.3"
 hyper = "0.14"
 indoc = "1.0"
 log = "0.4"
+magick_rust = { git = "https://github.com/davidwilemski/magick-rust", branch = "no-clap-dep" }
 markdown = "0.3"
+mime = "0.3"
 reqwest = { version = "0.11", features = ["json", "stream"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

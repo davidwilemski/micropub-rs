@@ -31,3 +31,13 @@ impl reject::Reject for MediaUploadError {}
 #[derive(Debug)]
 pub struct MediaFetchError;
 impl reject::Reject for MediaFetchError {}
+
+#[derive(Debug)]
+pub struct MediaStripError(&'static str);
+impl reject::Reject for MediaStripError {}
+
+impl From<magick_rust::MagickError> for MediaStripError {
+    fn from(s: magick_rust::MagickError) -> Self {
+        Self(s.0)
+    }
+}
