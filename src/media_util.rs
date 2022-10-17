@@ -1,7 +1,7 @@
 use std::sync::Once;
 
+use magick_rust::{magick_wand_genesis, MagickWand};
 use mime;
-use magick_rust::{MagickWand, magick_wand_genesis};
 
 use crate::errors::MediaStripError;
 

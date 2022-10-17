@@ -1,27 +1,25 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use bytes::BufMut;
 use chrono::Local;
 use diesel::prelude::*;
-use diesel::r2d2;
-use futures::{StreamExt, TryStreamExt};
 use log::{info, error};
 use reqwest;
 use url::form_urlencoded::parse;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use thiserror::Error;
-use warp::http::{Response, StatusCode};
-use warp::http::{header as http_header};
-use warp::{reject, Rejection};
-use warp::multipart;
 
 use crate::errors::*;
 use crate::handler::{MicropubDB, WithDB};
 use crate::models::{NewCategory, NewOriginalBlob, NewPost, NewPhoto, NewMediaUpload};
 use crate::{media_util, post_util};
 use crate::schema::{categories, original_blobs, posts, photos, media};
+
+use axum::{
+    extract::{Multipart, RawBody, Query},
+    response::IntoResponse,
+};
+use http::{header, StatusCode, HeaderValue};
 
 #[derive(Debug, Error)]
 enum MicropubFormError {
@@ -319,10 +317,7 @@ impl MicropubFormBuilder {
                         Some(MicropubPropertyValue::Value(alt)) => Some(alt),
                         _ => None
                     };
-                    let photo = Photo {
-                        url: url,
-                        alt: alt,
-                    };
+                    let photo = Photo {url, alt};
                     self.add_photo(photo);
                 }
             },
@@ -333,10 +328,7 @@ impl MicropubFormBuilder {
                             Some(MicropubPropertyValue::Value(alt)) => Some(alt),
                             _ => None
                         };
-                        let photo = Photo {
-                            url: url,
-                            alt: alt,
-                        };
+                        let photo = Photo {url, alt};
                         self.add_photo(photo);
                     }
                 }
@@ -445,131 +437,132 @@ fn get_latest_post_id(conn: &SqliteConnection) -> Result<i32, diesel::result::Er
     posts.select(id).order(id.desc()).limit(1).first(conn)
 }
 
-pub struct MicropubHandler<DB: WithDB> {
-    http_client: reqwest::Client,
-    db: DB,
-    config: serde_json::Value,
+pub async fn handle_post(
+    http_client: Arc<reqwest::Client>,
+    db: Arc<MicropubDB>,
+    headers: http::header::HeaderMap,
+    RawBody(body): RawBody<axum::body::Body>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let content_type = headers.get("Content-Type");
+    let auth = headers.get("Authorization");
+
+    if let None = auth {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let auth_header_val: String = auth
+        .expect("checked auth contents")
+        .to_str()
+        .map_err(|e| {
+            error!("error getting authorization header ascii contents: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+
+        })?
+        .into();
+
+    let validate_response = verify_auth(http_client, &auth_header_val).await?;
+
+    if validate_response.me != crate::HOST_WEBSITE {
+        return Err(StatusCode::FORBIDDEN);
+    }
+
+    let body_bytes: bytes::Bytes = hyper::body::to_bytes(body)
+        .await
+        .map_err(|e| {
+            error!("error reading bytes from body: {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+    let slug = create_post(
+        db.clone(),
+        content_type,
+        body_bytes,
+        validate_response.client_id.as_str()
+    ).await?;
+
+    Ok((
+        StatusCode::CREATED,
+        [
+            (header::LOCATION, format!("https://davidwilemski.com/{}", slug)),
+        ],
+    ))
 }
 
-impl MicropubHandler<MicropubDB> {
-    pub fn new(pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>, media_endpoint: String) -> Self {
-        // TODO probably make this a struct down the road?
-        let config = json!({
-            "media-endpoint": media_endpoint,
-        });
-
-        let handler = MicropubHandler {
-            http_client: reqwest::Client::new(),
-            db: MicropubDB::new(pool),
-            config: config,
-        };
-
-        handler
-    }
-
-    pub async fn handle_post(
-        &self,
-        content_type: Option<String>,
-        auth: String,
-        body: bytes::Bytes,
-    ) -> Result<impl warp::Reply, Rejection> {
-        info!("body: {:?}", &body.slice(..));
-
-        let validate_response = self.verify_auth(&auth).await?;
-
-        if validate_response.me != crate::HOST_WEBSITE {
-            return Err(reject::custom(NotAuthorized));
+pub async fn handle_query(
+    http_client: Arc<reqwest::Client>,
+    config: Arc<serde_json::Value>,
+    headers: axum::http::HeaderMap,
+    query: Query<Vec<(String, String)>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    // looking for ?q=config
+    info!("query: {:?}", query);
+    let is_query = query.iter().find_map(|(header, value)| {
+        if header == "q" && value == "config" {
+            Some(value)
+        } else {
+            None
         }
-
-        let slug = self.create_post(
-            content_type,
-            body,
-            validate_response.client_id.as_str()
-        ).await?;
-
-        Ok(
-            warp::reply::with_header(
-                warp::reply::with_status(
-                    warp::reply::reply(),
-                    StatusCode::CREATED,
-                ),
-                "Location",
-                format!("https://davidwilemski.com/{}", slug)
-            )
-        )
-    }
-
-    pub async fn handle_query(
-        &self,
-        auth: String,
-        query: Vec<(String, String)>,
-    ) -> Result<impl warp::Reply, Rejection> {
-        // looking for ?q=config
-        info!("query: {:?}", query);
-        let is_query = query.iter().find_map(|(header, value)| {
-            if header == "q" && value == "config" {
-                Some(value)
-            } else {
-                None
-            }
-        });
-        if let Some(_) = is_query {
-            // verify auth
-            let validate_response = self.verify_auth(&auth).await?;
+    });
+    if let Some(_) = is_query {
+        // verify auth
+        if let Some(auth_val) = headers.get("Authorization") {
+            let auth: &str = auth_val.to_str()
+                .map_err(|e| {
+                    error!("failed to to_str() on auth_val: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            let validate_response = verify_auth(http_client, auth).await?;
 
             if validate_response.me != crate::HOST_WEBSITE {
-                return Err(reject::custom(NotAuthorized));
+                return Err(StatusCode::FORBIDDEN);
             }
 
             // return media endpoint
-            return Ok(self.config.to_string())
+            return Ok(config.to_string())
+        } else {
+            return Err(StatusCode::UNAUTHORIZED);
         }
-
-        // TODO handle other types of queries like content queries
-        return Err(reject::not_found());
     }
 
-    pub async fn handle_media_upload(
-        &self,
-        auth: String,
-        multipart_data: multipart::FormData,
-    ) -> Result<impl warp::Reply, Rejection> {
-        // verify auth
-        let validate_response = self.verify_auth(&auth).await?;
+    // TODO handle other types of queries like content queries
+    return Err(StatusCode::NOT_FOUND);
+}
+
+// TODO look at axum DefaultBodyLimit and adjust
+pub async fn handle_media_upload(
+    http_client: Arc<reqwest::Client>,
+    db: Arc<MicropubDB>,
+    headers: axum::http::HeaderMap,
+    mut multipart_data: Multipart,
+) -> Result<impl IntoResponse, StatusCode> {
+    // verify auth
+    if let Some(auth_val) = headers.get("Authorization") {
+        let auth: &str = auth_val.to_str()
+            .map_err(|e| {
+                error!("failed to to_str() on auth_val: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+        let validate_response = verify_auth(http_client, &auth).await?;
 
         if validate_response.me != crate::HOST_WEBSITE {
-            return Err(reject::custom(NotAuthorized));
+            return Err(StatusCode::FORBIDDEN);
         }
+    } else {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
-        // find Part that has the name 'file'
-        let maybe_file = Box::pin(multipart_data.filter_map(|maybe_part| async {
-            match maybe_part {
-                Ok(part) if part.name() == "file" => Some(Ok(part)),
-                Ok(_) => None,
-                Err(e) => {
-                    error!("Error reading multipart form: {:?}", e);
-                    Some(Err(reject::custom(MediaUploadError)))
-                }
-            }
-        }))
-        .next()
-        .await;
-
-        match maybe_file {
-            // now try to read in part data
-            Some(Ok(part)) => {
-                let filename: Option<String> = part.filename().map(|s| s.into());
-                let content_type: Option<String> = part.content_type().map(|s| s.into());
-                // read in upload
-                let mut contents: Vec<u8> = part.stream()
-                    .try_fold(Vec::new(), |mut acc, data| {
-                        acc.put(data);
-                        async move { Ok(acc) }
-                    })
-                    .await
+    // find Part that has the name 'file'
+    // from the docs:
+    // For security reasons it’s recommended to combine this with ContentLengthLimit to limit the size of the request payload.
+    while let Ok(Some(field)) = multipart_data.next_field().await {
+        match field.name() {
+            Some(name) if name == "file" => {
+                let filename: Option<String> = field.file_name().map(|s| s.into());
+                let content_type: Option<String> = field.content_type().map(|s| s.into());
+                let mut contents = field.bytes().await
                     .map_err(|e| {
-                        error!("error accumulating request body: {:?}", e);
-                        reject::custom(MediaUploadError)
+                        error!("error reading request body: {:?}", e);
+                        MediaUploadError
                     })?;
 
                 // Pass media contents through imagemagick's strip functionality to remove things
@@ -583,12 +576,12 @@ impl MicropubHandler<MicropubDB> {
                         info!("content-type: {}", f);
                         info!("attempting to strip media starting with: {:?}", &contents[0..64]);
                         info!("length of media: {}", contents.len());
-                        contents = media_util::strip_media(&contents, &f)?;
+                        contents = media_util::strip_media(&contents, &f).map(|b| bytes::Bytes::from(b))?;
                     }
                     // still attempt to strip but don't reject if we fail
                     None => {
                         let f = "jpg";
-                        match media_util::strip_media(&contents, f) {
+                        match media_util::strip_media(&contents, f).map(|b| bytes::Bytes::from(b)) {
                             Ok(c) => contents = c,
                             Err(e) => {
                                 // log error but we don't need to reject the whole request at this
@@ -616,21 +609,24 @@ impl MicropubHandler<MicropubDB> {
                     .await
                     .map_err(|e| {
                         error!("error in PUT to rustyblobjectstore: {:?}", e);
-                        reject::custom(MediaUploadError)
+                        MediaUploadError
                     })?;
 
                 let status = resp.status();
                 if status != 201 && status != 200 {
                     error!("unsuccessful response status from rustyblobjectstore: {:?}", status);
-                    return Err(reject::custom(MediaUploadError))
+                    return Err(StatusCode::INTERNAL_SERVER_ERROR);
                 }
 
                 // get the key of the blob to construct the URL used for fetching
+                // record rustyblobjectstore response (the blobject key), create media table entry respond
+                // with media URL (micropub-rs needs to handle this still because we want to proxy the
+                // rustyblobjectstore backend).
                 let hex_digest = resp.text()
                     .await
                     .map_err(|e| {
                         error!("failure to read response body from rustyblobjectstore: {:?}", e);
-                        reject::custom(MediaUploadError)
+                        MediaUploadError
                     })?;
 
                 let new_media = NewMediaUpload {
@@ -638,198 +634,180 @@ impl MicropubHandler<MicropubDB> {
                     filename: filename.as_deref(),
                     content_type: content_type.as_deref(),
                 };
-                let conn = self.db.dbconn()?;
+                let conn = db.dbconn()?;
                 diesel::insert_into(media::table)
                     .values(&new_media)
                     .execute(&conn)
                     .map_err(|e| {
                         error!("error inserting hex digest into media uploads: {:?}", e);
-                        reject::custom(DBError)
+                        DBError::new()
                     })?;
 
 
-                // TODO it seems like the Location header is not being respected due to the body
-                // content of empty string?
-                let result = Ok(
-                    Response::builder()
-                        .status(StatusCode::CREATED)
-                        .header(
-                            // XXX the http crate forces header names to be lower case, even if you
-                            // pass in a string that contains upper case characters. The 1.x
-                            // standard says header names should be case insensitive and the 2.0
-                            // standard forces lower case I guess.  The problem is that Quill is
-                            // currently case sensitive and won't find the location header:
-                            // https://github.com/aaronpk/Quill/blob/cdbc6aa4f305529f618e19b5af31ed896fb0a673/lib/helpers.php#L123
-                            // A proxy may be needed to resolve this if a fix cannot be pushed to
-                            // the quill client.
-                            http_header::LOCATION,
-                            format!("https://davidwilemski.com/media/{}", hex_digest)
-                        )
-                        .body(warp::hyper::Body::empty())
-                        .map_err(|e| {
-                            error!("error building response: {:?}", e);
-                            reject::custom(MediaUploadError)
-                        })?
-                    // Box::new(warp::reply::with_status(
-                    //     Box::new(warp::reply::with_header(
-                    //         warp::reply::reply(),
-                    //         "Location",
-                    //         // TODO figure out media path/subdomain format
-                    //     )),
-                    //     StatusCode::CREATED,
-                    // ))
-                );
-                info!("returning 201 on media upload: {:?}", result);
-                result
-
-            },
-            // Some error reading multipart form parts
-            Some(Err(e)) => Err(e),
-            // No 'file' part found in multipart form
-            _ => Ok(
-                    Response::builder()
-                        .status(StatusCode::BAD_REQUEST)
-                        .body(warp::hyper::Body::empty())
-                        .map_err(|e| {
-                            error!("error building response: {:?}", e);
-                            reject::custom(MediaUploadError)
-                        })?
-                )
-        }
-
-        // record rustyblobjectstore response (the blobject key), create media table entry respond
-        // with media URL (micropub-rs needs to handle this still because we want to proxy the
-        // rustyblobjectstore backend).
-        // Ok("test")
-    }
-
-    /// Given an content type and body bytes, parse body and create post entry in the database.
-    ///
-    /// Returns slug string if successful
-    pub async fn create_post(
-        &self,
-        content_type: Option<String>,
-        body: bytes::Bytes,
-        client_id: &str,
-    ) -> Result<String, Rejection> {
-        let ct = content_type.unwrap_or("x-www-form-url-encoded".into());
-        let form = match ct.to_lowercase().as_str() {
-            "application/json" => {
-                MicropubForm::from_json_bytes(&body.slice(..)).map_err(|e| {
-                    error!("{:?}", e);
-                    reject::custom(ValidateResponseDeserializeError)
-                })?
+                return Ok((
+                    StatusCode::CREATED,
+                    // XXX the http crate forces header names to be lower case, even if you
+                    // pass in a string that contains upper case characters. The 1.x
+                    // standard says header names should be case insensitive and the 2.0
+                    // standard forces lower case I guess.  The problem is that Quill is
+                    // currently case sensitive and won't find the location header:
+                    // https://github.com/aaronpk/Quill/blob/cdbc6aa4f305529f618e19b5af31ed896fb0a673/lib/helpers.php#L123
+                    // A proxy may be needed to resolve this if a fix cannot be pushed to
+                    // the quill client.
+                    [(
+                        header::LOCATION,
+                        format!("https://davidwilemski.com/media/{}", hex_digest) // TODO don't hardcode domain
+                    )
+                    ],
+                ))
             }
             _ => {
-                // x-www-form-urlencoded
-                MicropubForm::from_form_bytes(&body.slice(..)).map_err(|e| {
-                    error!("{:?}", e);
-                    reject::custom(ValidateResponseDeserializeError)
-                })?
+                // Do nothing as we didn't find the upload
+                ()
             }
-        };
+        }
+    }
+    // TODO handle Err response from next_field here?
+    // If we got here it was either an err or we didn't find the file upload
+    // No 'file' part found in multipart form
+    Err(StatusCode::BAD_REQUEST)
+}
 
-        let slug = match form.slug {
-            Some(ref s) => s.clone(),
-            None => post_util::get_slug(form.name.as_deref(), Local::now),
-        };
+/// Given an content type and body bytes, parse body and create post entry in the database.
+///
+/// Returns slug string if successful
+pub async fn create_post(
+    db: Arc<MicropubDB>,
+    content_type: Option<&HeaderValue>,
+    body: bytes::Bytes,
+    client_id: &str,
+) -> Result<String, StatusCode> {
+        // .map_err(|e| {
+        //     error!("Error getting content type: {:?}", e);
+        //     StatusCode::INTERNAL_SERVER_ERROR
+        // })?;
+    let ct: String = content_type
+        .map(move |c| {
+            c.to_str()
+                .unwrap_or("x-www-form-url-encoded".into())
+                .into()
+        })
+        .unwrap_or("x-www-form-url-encoded".into());
+    let form = match ct.to_lowercase().as_str() {
+        "application/json" => {
+            MicropubForm::from_json_bytes(&body.slice(..)).map_err(|e| {
+                error!("{:?}", e);
+                ValidateResponseDeserializeError
+            })?
+        }
+        _ => {
+            // x-www-form-urlencoded
+            MicropubForm::from_form_bytes(&body.slice(..)).map_err(|e| {
+                error!("{:?}", e);
+                ValidateResponseDeserializeError
+            })?
+        }
+    };
 
-        let new_post = NewPost {
-            name: form.name.as_deref(),
-            slug: &slug, // TODO support inputting slug as part of the Micropub document/form
-            entry_type: &form.h,
-            content: Some(&form.content),
-            content_type: form.content_type.as_ref().map(|s| s.as_ref()),
-            client_id: Some(client_id),
-            created_at: form.created_at.as_deref(),
-            updated_at: form.updated_at.as_deref(),
-            bookmark_of: form.bookmark_of.as_deref(),
-        };
+    let slug = match form.slug {
+        Some(ref s) => s.clone(),
+        None => post_util::get_slug(form.name.as_deref(), Local::now),
+    };
 
-        self.db.run_txn(|conn| {
-            diesel::insert_into(posts::table)
-                .values(&new_post)
+    let new_post = NewPost {
+        name: form.name.as_deref(),
+        slug: &slug, // TODO support inputting slug as part of the Micropub document/form
+        entry_type: &form.h,
+        content: Some(&form.content),
+        content_type: form.content_type.as_ref().map(|s| s.as_ref()),
+        client_id: Some(client_id),
+        created_at: form.created_at.as_deref(),
+        updated_at: form.updated_at.as_deref(),
+        bookmark_of: form.bookmark_of.as_deref(),
+    };
+
+    db.run_txn(|conn| {
+        diesel::insert_into(posts::table)
+            .values(&new_post)
+            .execute(conn)?;
+        let post_id = get_latest_post_id(conn)?;
+        let new_categories: Vec<NewCategory> = form
+            .category
+            .iter()
+            .map(|c| NewCategory {
+                post_id,
+                category: c.as_str(),
+            })
+            .collect();
+
+        for c in new_categories {
+            diesel::insert_into(categories::table)
+                .values(c)
                 .execute(conn)?;
-            let post_id = get_latest_post_id(conn)?;
-            let new_categories: Vec<NewCategory> = form
-                .category
+        }
+
+        let original_blob = NewOriginalBlob {
+            post_id,
+            post_blob: &body,
+        };
+        diesel::insert_into(original_blobs::table)
+            .values(original_blob)
+            .execute(conn)?;
+
+        if let Some(ref photos) = form.photos {
+            let new_photos: Vec<NewPhoto> = photos
                 .iter()
-                .map(|c| NewCategory {
-                    post_id: post_id,
-                    category: c.as_str(),
+                .map(|p| NewPhoto {
+                    post_id,
+                    url: p.url.as_str(),
+                    alt: p.alt.as_ref().map(|a| a.as_str()),
                 })
                 .collect();
 
-            for c in new_categories {
-                diesel::insert_into(categories::table)
-                    .values(c)
+            for p in new_photos {
+                diesel::insert_into(photos::table)
+                    .values(p)
                     .execute(conn)?;
             }
+        }
 
-            let original_blob = NewOriginalBlob {
-                post_id: post_id,
-                post_blob: &body,
-            };
-            diesel::insert_into(original_blobs::table)
-                .values(original_blob)
-                .execute(conn)?;
+        Ok(())
+    })?;
 
-            if let Some(ref photos) = form.photos {
-                let new_photos: Vec<NewPhoto> = photos
-                    .iter()
-                    .map(|p| NewPhoto {
-                        post_id: post_id,
-                        url: p.url.as_str(),
-                        alt: p.alt.as_ref().map(|a| a.as_str()),
-                    })
-                    .collect();
+    Ok(slug)
+}
 
-                for p in new_photos {
-                    diesel::insert_into(photos::table)
-                        .values(p)
-                        .execute(conn)?;
-                }
-            }
+async fn verify_auth(
+    http_client: Arc<reqwest::Client>,
+    auth: &str,
+) -> Result<TokenValidateResponse, StatusCode> {
 
-            Ok(())
+    let r = http_client
+        .get(crate::AUTH_TOKEN_ENDPOINT)
+        .header("accept", "application/json")
+        .header("Authorization", auth)
+        .send()
+        .await;
+
+    let validate_response: TokenValidateResponse = r
+        .map_err(|e| {
+            error!("{:?}", e);
+            HTTPClientError
+        })?
+        .json()
+        .await
+        .map_err(|e| {
+            error!("{:?}", e);
+            ValidateResponseDeserializeError
         })?;
 
-        Ok(slug)
-    }
+    info!(
+        "validate_resp: {:?}, scopes: {:?}",
+        validate_response,
+        validate_response.scopes()
+    );
 
-    async fn verify_auth(
-        &self,
-        auth: &str,
-    ) -> Result<TokenValidateResponse, Rejection> {
-
-        let r = self
-            .http_client
-            .get(crate::AUTH_TOKEN_ENDPOINT)
-            .header("accept", "application/json")
-            .header("Authorization", auth)
-            .send()
-            .await;
-
-        let validate_response: TokenValidateResponse = r
-            .map_err(|e| {
-                error!("{:?}", e);
-                reject::custom(HTTPClientError)
-            })?
-            .json()
-            .await
-            .map_err(|e| {
-                error!("{:?}", e);
-                reject::custom(ValidateResponseDeserializeError)
-            })?;
-
-        info!(
-            "validate_resp: {:?}, scopes: {:?}",
-            validate_response,
-            validate_response.scopes()
-        );
-
-        Ok(validate_response)
-    }
+    Ok(validate_response)
 }
 
 #[cfg(test)]

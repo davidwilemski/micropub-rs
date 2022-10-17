@@ -2,52 +2,41 @@ use std::env;
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use log::{info, error};
-use warp::http::StatusCode;
-use warp::{Filter, Rejection};
+use log::info;
+use serde_json::json;
+
+use axum::{
+    extract::Path,
+    http::{HeaderMap, StatusCode},
+    response::IntoResponse,
+    routing::{get, on, on_service, post, MethodFilter},
+    Router,
+};
+use std::net::SocketAddr;
+use tower_http::services::ServeDir;
 
 use micropub_rs::constants::*;
-use micropub_rs::errors;
+use micropub_rs::handler;
 use micropub_rs::handlers;
 use micropub_rs::templates;
 
-async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection> {
-    // TODO JSON errors?
-    if let Some(errors::NotAuthorized) = err.find() {
-        error!("Handling NotAuthorized error: {:?}", err);
-        return Ok(warp::reply::with_status(
-            "Not Authorized",
-            StatusCode::FORBIDDEN,
-        ));
-    }
-
-    let internal_server_error =
-        warp::reply::with_status("", warp::http::StatusCode::INTERNAL_SERVER_ERROR);
-
-    // Technically these really are not needed as 500 is the default response
-    // for custom rejections but we could do some instrumentation or logging
-    // here or whatever.
-    if let Some(errors::HTTPClientError) = err.find() {
-        error!("Handling HTTPClientError: {:?}", err);
-        return Ok(internal_server_error);
-    }
-    if let Some(errors::ValidateResponseDeserializeError) = err.find() {
-        error!("Handling ValidateResponseDeserializeError: {:?}", err);
-        return Ok(internal_server_error);
-    }
-
-    // Otherwise pass the rejection through the filter stack
-    Err(err)
+async fn handle_error(_err: std::io::Error) -> impl IntoResponse {
+    (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong...")
 }
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
 
-    let dbfile = env::var("DATABASE_URL")?;
-    let template_dir = env::var(TEMPLATE_DIR_VAR)?;
-    let media_endpoint = env::var(MEDIA_ENDPOINT_VAR)?;
+    let dbfile = env::var("DATABASE_URL")
+        .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", "DATABASE_URL", e)))?;
+    let template_dir = env::var(TEMPLATE_DIR_VAR)
+        .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", TEMPLATE_DIR_VAR, e)))?;
+    let media_endpoint = env::var(MEDIA_ENDPOINT_VAR)
+        .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", MEDIA_ENDPOINT_VAR, e)))?;
     let dbpool = Arc::new(micropub_rs::new_dbconn_pool(&dbfile)?);
+    let micropub_db = Arc::new(handler::MicropubDB::new(dbpool.clone()));
+    let http_client = Arc::new(reqwest::Client::new());
     info!("created dbpool from {:?}", dbfile);
 
     let template_pattern = std::path::Path::new(&template_dir).join("templates/**/*.html");
@@ -63,144 +52,149 @@ async fn main() -> Result<(), anyhow::Error> {
     base_ctx.insert("MENUITEMS", crate::MENU_ITEMS);
     base_ctx.insert("FEED_DOMAIN", "");
     base_ctx.insert("FEED_ALL_ATOM", "feeds/all.atom.xml");
-    info!("initialized template system with templates in {:?}", template_dir);
+    info!(
+        "initialized template system with templates in {:?}",
+        template_dir
+    );
+
+    let media_config = Arc::new(json!({
+        "media-endpoint": media_endpoint,
+    }));
 
     let atom_ctx = base_ctx.clone();
 
     let templates = Arc::new(templates::Templates::new(tera, base_ctx));
-    let micropub_post_handler = Arc::new(
-        handlers::MicropubHandler::new(dbpool.clone(), media_endpoint.clone())
-    );
-    // TODO unify these three via routing?
-    let micropub_query_handler = Arc::new(
-        handlers::MicropubHandler::new(dbpool.clone(), media_endpoint.clone())
-    );
-    let micropub_media_handler = Arc::new(
-        handlers::MicropubHandler::new(dbpool.clone(), media_endpoint)
-    );
-    let fetch_handler = Arc::new(handlers::FetchHandler::new(
-        dbpool.clone(),
-        templates.clone(),
-    ));
-    let media_fetch_handler = fetch_handler.clone();
-    let archive_handler = Arc::new(handlers::ArchiveHandler::new(
-        dbpool.clone(),
-        templates.clone(),
-    ));
-    let tag_archive_handler = Arc::new(handlers::ArchiveHandler::new(
-        dbpool.clone(),
-        templates.clone(),
-    ));
-    let atom_handler = Arc::new(handlers::AtomHandler::new(
-        dbpool.clone(),
-        Arc::new(crate::templates::Templates::atom_default(atom_ctx)),
-    ));
-    let index_handler = Arc::new(handlers::IndexHandler::new(
-        dbpool.clone(),
-        templates.clone(),
-    ));
-    let static_files = warp::filters::fs::dir(std::path::Path::new(&template_dir).join("static"));
 
-    let micropub_post = warp::path!("micropub")
-        .and(warp::post())
-        .and(warp::filters::header::optional::<String>("Content-Type"))
-        .and(warp::header::<String>("Authorization"))
-        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
-        .and(warp::body::bytes())
-        .and_then(move |ct, a, body| {
-            let h = micropub_post_handler.clone();
-            async move { h.handle_post(ct, a, body).await }
-        })
-        .recover(handle_rejection);
-    let micropub_get = warp::path!("micropub")
-        .and(warp::get().or(warp::head()))
-        .and(warp::header::<String>("Authorization"))
-        .and(warp::filters::query::query())
-        .and_then(move |_method, auth, query| {
-            let h = micropub_query_handler.clone();
-            async move { h.handle_query(auth, query).await }
-        });
-    let media_post = warp::path!("media")
-        .and(warp::body::content_length_limit(MAX_CONTENT_LENGTH))
-        .and(warp::post())
-        .and(warp::header::<String>("Authorization"))
-        .and(warp::filters::multipart::form().max_length(MAX_CONTENT_LENGTH))
-        .and_then(move |auth, multipart_data| {
-            let h = micropub_media_handler.clone();
-            async move { h.handle_media_upload(auth, multipart_data).await }
-        });
+    let app = Router::new()
+        .route(
+            "/",
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    let templates = templates.clone();
+                    move || handlers::get_index_handler(dbpool.clone(), templates.clone())
+                }
+            ),
+        )
+        .route(
+            "/archives",
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    let templates = templates.clone();
+                    move || handlers::get_archive_handler(None, dbpool.clone(), templates.clone())
+                }
+            ),
+        )
+        .route(
+            "/feeds/all.atom.xml",
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    let templates = Arc::new(crate::templates::Templates::atom_default(atom_ctx));
+                    move || handlers::get_atom_handler(dbpool.clone(), templates.clone())
+                }
+            ),
+        )
+        .route(
+            "/media",
+            post({
+                let db = micropub_db.clone();
+                let client = http_client.clone();
 
-    let media_get = warp::path!("media" / String)
-        .and(warp::get().or(warp::head()))
-        // Second argument is an Either (I think to represent the get.or(head))
-        .and_then(move |media_id: String, _| {
-            dbg!(&media_id);
-            info!("fetch_media media_id: {:?}", media_id);
-            let h = media_fetch_handler.clone();
-            async move { h.fetch_media(&media_id).await }
-        });
-
-    let fetch_post = warp::any()
-        .and(warp::path::full())
-        .map(move |path: warp::path::FullPath| {
-            path.as_str().to_string()
-        }).and_then(move |path: String| {
-            //full path includes leading /, remove that
-            let slug = path.as_str().strip_prefix('/').map(|s| s.to_string());
-            let h = fetch_handler.clone();
-            async move { h.fetch_post(&slug.unwrap_or(path)).await }
-        });
-
-    let archives = warp::path!("archives").and(warp::get()).and_then(move || {
-        let h = archive_handler.clone();
-        async move { h.get(None).await }
-    });
-
-    let tag_archives = warp::path!("tag" / String).and(warp::get()).and_then(move |tag: String| {
-        let h = tag_archive_handler.clone();
-        async move { h.get(Some(tag.as_str())).await }
-    });
-
-    let atom = warp::path!("feeds" / "all.atom.xml")
-        .and(warp::get())
-        .and_then(move || {
-            let h = atom_handler.clone();
-            async move { h.get().await }
-        });
-
-    let index = warp::path::end().and(warp::get().or(warp::head())).and_then(move |_method| {
-        let h = index_handler.clone();
-        async move { h.get().await }
-    });
-
-    let log = warp::log("micropub::server");
-
-    let route =
-        index.or(
-            micropub_post.or(
-                micropub_get.or(
-                    media_post.or(
-                        tag_archives.or(
-                            archives.or(
-                                atom.or(
-                                    warp::path("theme").and(static_files)
-                                ).or(
-                                    media_get.or(fetch_post)
-                                )
-                            )
-                        )
+                move |headers, multipart| {
+                    handlers::handle_media_upload(
+                        client.clone(), 
+                        db.clone(),
+                        headers,
+                        multipart
                     )
+                }
+            }),
+        )
+        .route(
+            "/media/:media_id",
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    let client = http_client.clone();
+                    move |media_id| {
+                        handlers::get_media_handler(media_id, client.clone(), dbpool.clone())
+                }
+            }),
+        )
+        .route(
+            "/micropub",
+            post({
+                let db = micropub_db.clone();
+                let client = http_client.clone();
+
+                move |headers: HeaderMap, body| {
+                    handlers::handle_post(client.clone(), db.clone(), headers, body)
+                }
+            }).get({
+                let client = http_client.clone();
+                let config = media_config.clone();
+
+                move |headers, query| {
+                    handlers::handle_query(
+                        client.clone(),
+                        config.clone(),
+                        headers,
+                        query
+                    )
+                }
+
+            })
+        )
+        .route(
+            "/tag/:tag",
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    let templates = templates.clone();
+                    move |Path(tag): Path<String>| {
+                        handlers::get_archive_handler(Some(tag), dbpool.clone(), templates.clone())
+                    }
+                }
+            ),
+        )
+        .nest(
+            "/theme",
+            on_service(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                ServeDir::new(
+                    std::path::Path::new(&template_dir).join("static")
                 )
             )
+            .handle_error(handle_error),
         )
-        .with(log);
-    let svc = warp::service(route);
-    let make_service = tower::make::Shared::new(svc);
+        // Handle posts as a fallback
+        // XXX not sure if there's a more idiomatic way.
+        // Tried a wildcard match on /*url_slug but that panicked due to path conflicts
+        .fallback(
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    move |uri: axum::http::Uri| {
+                        info!("in get post handler");
+                        handlers::get_post_handler(uri, dbpool.clone(), templates.clone())
+                    }
+                }
+            )
+        );
 
-    hyper::Server::bind(&([0, 0, 0, 0], 3030).into())
-            .http1_title_case_headers(true)
-            .serve(make_service)
-                .await?;
+    let addr = SocketAddr::from(([0, 0, 0, 0], 3030));
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 
     Ok(())
 }

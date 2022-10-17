@@ -1,7 +1,12 @@
 use chrono::{DateTime, Local, TimeZone};
 
 fn get_first_n(n: usize, input: &str) -> String {
-    input.to_lowercase().chars().filter(|c| c.is_alphanumeric() || c.is_whitespace()).take(n).collect()
+    input
+        .to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .take(n)
+        .collect()
 }
 
 pub fn get_slug(name: Option<&str>, now_fn: fn() -> DateTime<Local>) -> String {
@@ -9,7 +14,7 @@ pub fn get_slug(name: Option<&str>, now_fn: fn() -> DateTime<Local>) -> String {
         Some(n) => {
             let now = now_fn().format("%Y/%m/%d");
             format!("{}/{}", now, get_first_n(32, n))
-        },
+        }
         None => {
             let now = now_fn().format("%Y/%m/%d/%H%M%S");
             format!("{}", now)
@@ -19,14 +24,16 @@ pub fn get_slug(name: Option<&str>, now_fn: fn() -> DateTime<Local>) -> String {
     slug.replace(" ", "-")
 }
 
-pub fn get_local_datetime(datetime: &str, offset: Option<chrono::FixedOffset>) -> Result<DateTime<Local>, chrono::format::ParseError> {
-    chrono::NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S")
-        .map(|ndt| {
-            chrono::DateTime::<chrono::Local>::from_utc(
-                ndt,
-                offset.unwrap_or(chrono::FixedOffset::west(8 * 3600)),
-            )
-        })
+pub fn get_local_datetime(
+    datetime: &str,
+    offset: Option<chrono::FixedOffset>,
+) -> Result<DateTime<Local>, chrono::format::ParseError> {
+    chrono::NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S").map(|ndt| {
+        chrono::DateTime::<chrono::Local>::from_utc(
+            ndt,
+            offset.unwrap_or(chrono::FixedOffset::west(8 * 3600)),
+        )
+    })
 }
 
 #[cfg(test)]
@@ -46,7 +53,10 @@ mod test {
 
     #[test]
     fn it_replaces_spaces_in_name_with_hyphens() {
-        assert_eq!(get_slug(Some("testing stuff"), now), "2020/10/24/testing-stuff");
+        assert_eq!(
+            get_slug(Some("testing stuff"), now),
+            "2020/10/24/testing-stuff"
+        );
     }
 
     #[test]
@@ -63,6 +73,6 @@ mod test {
     }
     #[test]
     fn it_truncates_content_for_slug() {
-        assert_eq!( get_slug(None, now), "2020/10/24/153233");
+        assert_eq!(get_slug(None, now), "2020/10/24/153233");
     }
 }

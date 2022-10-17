@@ -39,8 +39,10 @@ type BoxedPostsQuery<'a> = posts::BoxedQuery<'a, Sqlite, PostSqlType>;
 
 fn posts_for_category(tag: &str) -> categories::BoxedQuery<'_, Sqlite, diesel::sql_types::Integer> {
     use crate::schema::categories::dsl::*;
-    categories.select(post_id).filter(category.eq(tag)).into_boxed()
-
+    categories
+        .select(post_id)
+        .filter(category.eq(tag))
+        .into_boxed()
 }
 
 #[derive(Debug, Queryable, Serialize)]
@@ -65,9 +67,13 @@ impl Post {
 
     pub fn all<'a>() -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
-        posts.select(ALL_COLUMNS).order_by(created_at.desc()).into_boxed()
+        posts
+            .select(ALL_COLUMNS)
+            .order_by(created_at.desc())
+            .into_boxed()
     }
 
+    // TODO make tag lookup case insensitive?
     pub fn by_tag<'a>(tag: &'a str) -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
         Post::all()
@@ -77,9 +83,7 @@ impl Post {
 
     pub fn latest<'a>() -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
-        Post::all()
-            .order_by(created_at.desc())
-            .limit(1)
+        Post::all().order_by(created_at.desc()).limit(1)
     }
 }
 
@@ -116,7 +120,7 @@ pub struct NewOriginalBlob<'a> {
 pub struct NewMediaUpload<'a> {
     pub hex_digest: &'a str,
     pub filename: Option<&'a str>,
-    pub content_type: Option<&'a str>
+    pub content_type: Option<&'a str>,
 }
 
 #[derive(Debug, Insertable)]

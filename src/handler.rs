@@ -12,13 +12,16 @@ pub trait WithDB {
 
     fn handle_errors(&self, e: diesel::result::Error) -> DBError {
         error!("{:?}", e);
-        DBError
+        match e {
+            diesel::result::Error::NotFound => DBError::not_found(),
+            _ => DBError::new(),
+        }
     }
 
     fn dbconn(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, DBError> {
         self.dbpool().get().map_err(|e| {
             error!("{:?}", e);
-            DBError
+            DBError::new()
         })
     }
 
@@ -29,9 +32,9 @@ pub trait WithDB {
         ) -> Result<T, diesel::result::Error>,
     {
         let conn = self.dbconn()?;
-        conn.transaction(|| f(&conn)).map_err(|e| self.handle_errors(e))
+        conn.transaction(|| f(&conn))
+            .map_err(|e| self.handle_errors(e))
     }
-
 }
 
 pub struct MicropubDB {
@@ -40,7 +43,7 @@ pub struct MicropubDB {
 
 impl MicropubDB {
     pub fn new(dbpool: Arc<Pool<ConnectionManager<SqliteConnection>>>) -> Self {
-        Self { dbpool: dbpool }
+        Self { dbpool }
     }
 }
 

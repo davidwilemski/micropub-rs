@@ -52,7 +52,12 @@ pub struct Post {
 }
 
 impl Post {
-    pub fn new_from(post: DBPost, categories: Vec<String>, date: Date, photos: Vec<(String, Option<String>)>) -> Self {
+    pub fn new_from(
+        post: DBPost,
+        categories: Vec<String>,
+        date: Date,
+        photos: Vec<(String, Option<String>)>,
+    ) -> Self {
         let content = match post.content_type.as_deref() {
             Some("markdown") => post.content.as_deref().map(markdown::to_html),
             _ => post.content,
@@ -71,7 +76,10 @@ impl Post {
             date: date,
             tags: categories,
             bookmark_of: post.bookmark_of,
-            photos: internal_photos.drain(..).map(|(url, alt)| Photo { url: url, alt: alt }).collect(),
+            photos: internal_photos
+                .drain(..)
+                .map(|(url, alt)| Photo { url: url, alt: alt })
+                .collect(),
         }
     }
 }
