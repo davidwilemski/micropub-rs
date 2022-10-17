@@ -1,8 +1,29 @@
 use warp::reject;
+use http::StatusCode;
 
 #[derive(Debug)]
-pub struct DBError;
+pub struct DBError {
+    not_found: bool,
+}
+impl DBError {
+    pub fn new() -> Self {
+        DBError { not_found: false }
+    }
+
+    pub fn not_found() -> Self {
+        DBError { not_found: true }
+    }
+}
 impl reject::Reject for DBError {}
+impl From<DBError> for StatusCode {
+    fn from(e: DBError) -> Self {
+        if e.not_found {
+            StatusCode::NOT_FOUND
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct JSONSerializationError;
@@ -11,6 +32,11 @@ impl reject::Reject for JSONSerializationError {}
 #[derive(Debug)]
 pub struct TemplateError;
 impl reject::Reject for TemplateError {}
+impl From<TemplateError> for StatusCode {
+    fn from(e: TemplateError) -> Self {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
 
 #[derive(Debug)]
 pub struct HTTPClientError;

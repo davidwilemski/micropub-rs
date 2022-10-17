@@ -6,6 +6,14 @@ use log::{info, error};
 use warp::http::StatusCode;
 use warp::{Filter, Rejection};
 
+use axum::{
+    routing::{get, post},
+    // http::StatusCode,
+    response::IntoResponse,
+    Json, Router,
+};
+use std::net::SocketAddr;
+
 use micropub_rs::constants::*;
 use micropub_rs::errors;
 use micropub_rs::handlers;
@@ -172,6 +180,20 @@ async fn main() -> Result<(), anyhow::Error> {
         let h = index_handler.clone();
         async move { h.get().await }
     });
+
+    let app = Router::new()
+        .route(
+            "/",
+            get({
+                move || handlers::get_index_handler(dbpool.clone(), templates.clone())
+            })
+        );
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
 
     let log = warp::log("micropub::server");
 

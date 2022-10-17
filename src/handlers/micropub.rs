@@ -644,7 +644,7 @@ impl MicropubHandler<MicropubDB> {
                     .execute(&conn)
                     .map_err(|e| {
                         error!("error inserting hex digest into media uploads: {:?}", e);
-                        reject::custom(DBError)
+                        reject::custom(DBError::new())
                     })?;
 
 
