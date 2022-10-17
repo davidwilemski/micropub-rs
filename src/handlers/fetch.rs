@@ -13,6 +13,12 @@ use crate::post_util;
 use crate::templates;
 use crate::view_models::{Date as DateView, Post as PostView};
 
+use axum::{
+    extract::Path,
+    response::{Html, IntoResponse},
+};
+use http::StatusCode;
+
 pub struct FetchHandler<DB: WithDB> {
     db: DB,
     templates: Arc<templates::Templates>,
@@ -118,4 +124,51 @@ impl FetchHandler<MicropubDB> {
             )
         }
     }
+}
+
+pub async fn get_post_handler(
+    Path(url_slug): Path<String>,
+    pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
+    templates: Arc<templates::Templates>,
+) -> Result<impl IntoResponse, StatusCode> {
+    info!("fetch_post url_slug:{:?}", url_slug);
+    let db = MicropubDB::new(pool);
+    let conn = db.dbconn()?;
+
+    let mut post = Post::by_slug(&url_slug).first::<Post>(&conn)
+        .map_err(|e| db.handle_errors(e))?;
+
+    use crate::schema::categories::dsl as category_dsl;
+    let tags: Vec<String> = category_dsl::categories
+        .select(category_dsl::category)
+        .filter(category_dsl::post_id.eq(post.id))
+        .get_results(&conn)
+        .map_err(|e| db.handle_errors(e))?;
+
+    use crate::schema::photos::dsl as photos_dsl;
+    let photos: Vec<(String, Option<String>)> = photos_dsl::photos
+        .select((photos_dsl::url, photos_dsl::alt))
+        .filter(photos_dsl::post_id.eq(post.id))
+        .get_results(&conn)
+        .map_err(|e| db.handle_errors(e))?;
+
+    debug!("input datetime: {:?}", post.created_at);
+    let datetime = post_util::get_local_datetime(&post.created_at, None)
+        .map_err(|e| {
+            error!("date parsing error: {:?}", e);
+            // TODO shouldn't be a template error but realistically this would only happen if
+            // the DB had malformed data for template rendering...
+            TemplateError
+        })?;
+    post.created_at = datetime.to_rfc3339();
+
+    let post_view = PostView::new_from(post, tags, DateView::from(&datetime), photos);
+    let page = templates
+        .add_context("article", &post_view)
+        .render("article.html")
+        .map_err(|e| {
+            error!("{:?}", e);
+            TemplateError
+        })?;
+    Ok(Html(page))
 }

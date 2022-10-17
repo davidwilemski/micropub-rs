@@ -7,6 +7,7 @@ use warp::http::StatusCode;
 use warp::{Filter, Rejection};
 
 use axum::{
+    extract::Path,
     routing::{get, post},
     // http::StatusCode,
     response::IntoResponse,
@@ -185,7 +186,17 @@ async fn main() -> Result<(), anyhow::Error> {
         .route(
             "/",
             get({
+                let dbpool = dbpool.clone();
+                let templates = templates.clone();
                 move || handlers::get_index_handler(dbpool.clone(), templates.clone())
+            })
+        )
+        .route(
+            "/:url_slug",
+            get({
+                let dbpool = dbpool.clone();
+                let templates = templates.clone();
+                move |url_slug| handlers::get_post_handler(url_slug, dbpool.clone(), templates.clone())
             })
         );
 
