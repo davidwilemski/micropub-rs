@@ -193,6 +193,14 @@ async fn main() -> Result<(), anyhow::Error> {
             })
         )
         .route(
+            "/feeds/all.atom.xml",
+            get({
+                let dbpool = dbpool.clone();
+                let templates = templates.clone();
+                move || handlers::get_atom_handler(dbpool.clone(), templates.clone())
+            })
+        )
+        .route(
             "/media/:media_id",
             get({
                 let dbpool = dbpool.clone();
