@@ -57,6 +57,11 @@ impl reject::Reject for MediaUploadError {}
 #[derive(Debug)]
 pub struct MediaFetchError;
 impl reject::Reject for MediaFetchError {}
+impl From<MediaFetchError> for StatusCode {
+    fn from(e: MediaFetchError) -> Self {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
 
 #[derive(Debug)]
 pub struct MediaStripError(&'static str);

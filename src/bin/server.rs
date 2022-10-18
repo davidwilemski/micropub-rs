@@ -57,6 +57,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let template_dir = env::var(TEMPLATE_DIR_VAR)?;
     let media_endpoint = env::var(MEDIA_ENDPOINT_VAR)?;
     let dbpool = Arc::new(micropub_rs::new_dbconn_pool(&dbfile)?);
+    let http_client = reqwest::Client::new();
     info!("created dbpool from {:?}", dbfile);
 
     let template_pattern = std::path::Path::new(&template_dir).join("templates/**/*.html");
@@ -192,10 +193,17 @@ async fn main() -> Result<(), anyhow::Error> {
             })
         )
         .route(
+            "/media/:media_id",
+            get({
+                let dbpool = dbpool.clone();
+                let client = http_client.clone();
+                move |media_id| handlers::get_media_handler(media_id, client.clone(), dbpool.clone())
+            })
+        )
+        .route(
             "/:url_slug",
             get({
                 let dbpool = dbpool.clone();
-                let templates = templates.clone();
                 move |url_slug| handlers::get_post_handler(url_slug, dbpool.clone(), templates.clone())
             })
         );

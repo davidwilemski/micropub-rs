@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
+use bytes::Bytes;
 use diesel::prelude::*;
 use diesel::r2d2;
 use log::{debug, info, error};
 use warp::{reject, Rejection};
-use warp::http::{header as http_header, Response};
+// use warp::http::{header as http_header, Response};
 
 use crate::errors::*;
 use crate::handler::{MicropubDB, WithDB};
@@ -17,7 +18,7 @@ use axum::{
     extract::Path,
     response::{Html, IntoResponse},
 };
-use http::StatusCode;
+use http::{header as http_header, Response, StatusCode};
 
 pub struct FetchHandler<DB: WithDB> {
     db: DB,
@@ -171,4 +172,47 @@ pub async fn get_post_handler(
             TemplateError
         })?;
     Ok(Html(page))
+}
+
+pub async fn get_media_handler(
+    Path(media_id): Path<String>,
+    client: reqwest::Client,
+    pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let resp = client.get(format!("http://rustyblobjectstore:3031/{}", media_id))
+        .send()
+        .await
+        .map_err(|e| {
+            error!("error in GET to rustyblobjectstore: {:?}", e);
+            MediaFetchError
+        })?;
+
+    use crate::schema::media::dsl::*;
+    let db = MicropubDB::new(pool);
+    let conn = db.dbconn()?;
+    let media_content_type: Option<String> = media.select(content_type)
+        .filter(hex_digest.eq(media_id))
+        .first(&conn)
+        .map_err(|e| db.handle_errors(e))?;
+
+    if resp.status() != 200 {
+        Err(StatusCode::NOT_FOUND)
+    } else {
+        let media_body: Bytes = resp.bytes()
+            .await
+            .map_err(|e| {
+                error!("error in receiving body as bytes(): {:?}", e);
+                MediaFetchError
+            })?;
+        Ok((
+            StatusCode::OK,
+            [(
+                http::header::CONTENT_TYPE,
+                media_content_type
+                    .unwrap_or("application/octet-stream".into())
+              )
+            ],
+            media_body
+        ))
+    }
 }
