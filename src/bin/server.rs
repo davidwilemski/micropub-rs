@@ -193,6 +193,14 @@ async fn main() -> Result<(), anyhow::Error> {
             })
         )
         .route(
+            "/archives",
+            get({
+                let dbpool = dbpool.clone();
+                let templates = templates.clone();
+                move || handlers::get_archive_handler(None, dbpool.clone(), templates.clone())
+            })
+        )
+        .route(
             "/feeds/all.atom.xml",
             get({
                 let dbpool = dbpool.clone();
@@ -206,6 +214,14 @@ async fn main() -> Result<(), anyhow::Error> {
                 let dbpool = dbpool.clone();
                 let client = http_client.clone();
                 move |media_id| handlers::get_media_handler(media_id, client.clone(), dbpool.clone())
+            })
+        )
+        .route(
+            "/tag/:tag",
+            get({
+                let dbpool = dbpool.clone();
+                let templates = templates.clone();
+                move |Path(tag): Path<String>| handlers::get_archive_handler(Some(tag), dbpool.clone(), templates.clone())
             })
         )
         .route(
