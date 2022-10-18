@@ -8,17 +8,22 @@ use warp::{Filter, Rejection};
 
 use axum::{
     extract::Path,
-    routing::{get, post},
+    routing::{get, post, get_service},
     // http::StatusCode,
     response::IntoResponse,
     Json, Router,
 };
 use std::net::SocketAddr;
+use tower_http::services::ServeDir;
 
 use micropub_rs::constants::*;
 use micropub_rs::errors;
 use micropub_rs::handlers;
 use micropub_rs::templates;
+
+async fn handle_error(_err: std::io::Error) -> impl IntoResponse {
+    (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong...")
+}
 
 async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection> {
     // TODO JSON errors?
@@ -223,6 +228,12 @@ async fn main() -> Result<(), anyhow::Error> {
                 let templates = templates.clone();
                 move |Path(tag): Path<String>| handlers::get_archive_handler(Some(tag), dbpool.clone(), templates.clone())
             })
+        )
+        .route(
+            "/theme",
+            get_service(
+                ServeDir::new(std::path::Path::new(&template_dir).join("static"))
+            ).handle_error(handle_error)
         )
         .route(
             "/:url_slug",
