@@ -1,5 +1,5 @@
-use warp::reject;
 use http::StatusCode;
+use warp::reject;
 
 #[derive(Debug)]
 pub struct DBError {
@@ -41,10 +41,20 @@ impl From<TemplateError> for StatusCode {
 #[derive(Debug)]
 pub struct HTTPClientError;
 impl reject::Reject for HTTPClientError {}
+impl From<HTTPClientError> for StatusCode {
+    fn from(e: HTTPClientError) -> Self {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
 
 #[derive(Debug)]
 pub struct ValidateResponseDeserializeError;
 impl reject::Reject for ValidateResponseDeserializeError {}
+impl From<ValidateResponseDeserializeError> for StatusCode {
+    fn from(e: ValidateResponseDeserializeError) -> Self {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
 
 #[derive(Debug)]
 pub struct NotAuthorized;
@@ -53,6 +63,11 @@ impl reject::Reject for NotAuthorized {}
 #[derive(Debug)]
 pub struct MediaUploadError;
 impl reject::Reject for MediaUploadError {}
+impl From<MediaUploadError> for StatusCode {
+    fn from(e: MediaUploadError) -> Self {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
 
 #[derive(Debug)]
 pub struct MediaFetchError;
@@ -66,6 +81,11 @@ impl From<MediaFetchError> for StatusCode {
 #[derive(Debug)]
 pub struct MediaStripError(&'static str);
 impl reject::Reject for MediaStripError {}
+impl From<MediaStripError> for StatusCode {
+    fn from(e: MediaStripError) -> Self {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
 
 impl From<magick_rust::MagickError> for MediaStripError {
     fn from(s: magick_rust::MagickError) -> Self {

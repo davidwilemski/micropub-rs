@@ -9,4 +9,3 @@ pub const SOCIAL: &str = "https://github.com/davidwilemski";
 pub const MICROPUB_ENDPOINT: &str = "/micropub";
 pub const AUTH_ENDPOINT: &str = "https://indieauth.com/auth";
 pub const TOKEN_ENDPOINT: &str = "https://tokens.indieauth.com/token";
-

@@ -9,7 +9,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut data: Vec<u8> = Vec::new();
     file.read_to_end(&mut data)?;
 
-    println!("attempting to strip media starting with: {:?}", &data[0..64]);
+    println!(
+        "attempting to strip media starting with: {:?}",
+        &data[0..64]
+    );
     println!("media length: {}", data.len());
 
     data = media_util::strip_media(&data, "jpeg").unwrap();

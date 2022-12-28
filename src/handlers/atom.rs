@@ -13,9 +13,7 @@ use crate::post_util;
 use crate::templates;
 use crate::view_models::{Date as DateView, Post as PostView};
 
-use axum::{
-    response::{IntoResponse},
-};
+use axum::response::IntoResponse;
 use http::{header, StatusCode};
 
 pub struct AtomHandler<DB: WithDB> {
@@ -57,9 +55,7 @@ impl AtomHandler<MicropubDB> {
         query_result.sort_by_key(|item| item.0);
         let mut tags: HashMap<i32, Vec<String>> = HashMap::new();
         for (post_id_, tag) in query_result {
-            tags.entry(post_id_)
-                .or_default()
-                .push(tag);
+            tags.entry(post_id_).or_default().push(tag);
         }
 
         use crate::schema::photos::dsl as photos_dsl;
@@ -70,25 +66,27 @@ impl AtomHandler<MicropubDB> {
             .map_err(|e| self.db.handle_errors(e))?;
         let mut photos_by_post: HashMap<i32, Vec<(String, Option<String>)>> = HashMap::new();
         for (post_id_, url, alt) in photos {
-            photos_by_post.entry(post_id_)
-                .or_default()
-                .push((url, alt));
+            photos_by_post.entry(post_id_).or_default().push((url, alt));
         }
 
         for mut post in posts {
             // TODO this is copied from FetchHandler. Both should not do this and should instead be
             // handled e.g. at the view model creation time.
-            let datetime = post_util::get_local_datetime(&post.created_at, None)
-                .map_err(|e| {
-                    error!("date parsing error: {:?}", e);
-                    // TODO shouldn't be a template error but realistically this would only happen if
-                    // the DB had malformed data for template rendering...
-                    reject::custom(TemplateError)
-                })?;
+            let datetime = post_util::get_local_datetime(&post.created_at, None).map_err(|e| {
+                error!("date parsing error: {:?}", e);
+                // TODO shouldn't be a template error but realistically this would only happen if
+                // the DB had malformed data for template rendering...
+                reject::custom(TemplateError)
+            })?;
             post.created_at = datetime.to_rfc3339();
 
             let pid = post.id;
-            let post_view = PostView::new_from(post, tags.remove(&pid).unwrap_or(vec![]), DateView::from(&datetime), photos_by_post.remove(&pid).unwrap_or(vec![]));
+            let post_view = PostView::new_from(
+                post,
+                tags.remove(&pid).unwrap_or(vec![]),
+                DateView::from(&datetime),
+                photos_by_post.remove(&pid).unwrap_or(vec![]),
+            );
             posts_views.push(post_view);
         }
 
@@ -122,10 +120,9 @@ pub async fn get_atom_handler(
     let db = MicropubDB::new(pool);
     let conn = db.dbconn()?;
 
-    let posts =
-        Post::all()
-            .load::<Post>(&conn)
-            .map_err(|e: diesel::result::Error| db.handle_errors(e))?;
+    let posts = Post::all()
+        .load::<Post>(&conn)
+        .map_err(|e: diesel::result::Error| db.handle_errors(e))?;
 
     use crate::schema::categories::dsl::*;
     let mut posts_views = vec![];
@@ -139,9 +136,7 @@ pub async fn get_atom_handler(
     query_result.sort_by_key(|item| item.0);
     let mut tags: HashMap<i32, Vec<String>> = HashMap::new();
     for (post_id_, tag) in query_result {
-        tags.entry(post_id_)
-            .or_default()
-            .push(tag);
+        tags.entry(post_id_).or_default().push(tag);
     }
 
     use crate::schema::photos::dsl as photos_dsl;
@@ -152,25 +147,27 @@ pub async fn get_atom_handler(
         .map_err(|e| db.handle_errors(e))?;
     let mut photos_by_post: HashMap<i32, Vec<(String, Option<String>)>> = HashMap::new();
     for (post_id_, url, alt) in photos {
-        photos_by_post.entry(post_id_)
-            .or_default()
-            .push((url, alt));
+        photos_by_post.entry(post_id_).or_default().push((url, alt));
     }
 
     for mut post in posts {
         // TODO this is copied from FetchHandler. Both should not do this and should instead be
         // handled e.g. at the view model creation time.
-        let datetime = post_util::get_local_datetime(&post.created_at, None)
-            .map_err(|e| {
-                error!("date parsing error: {:?}", e);
-                // TODO shouldn't be a template error but realistically this would only happen if
-                // the DB had malformed data for template rendering...
-                TemplateError
-            })?;
+        let datetime = post_util::get_local_datetime(&post.created_at, None).map_err(|e| {
+            error!("date parsing error: {:?}", e);
+            // TODO shouldn't be a template error but realistically this would only happen if
+            // the DB had malformed data for template rendering...
+            TemplateError
+        })?;
         post.created_at = datetime.to_rfc3339();
 
         let pid = post.id;
-        let post_view = PostView::new_from(post, tags.remove(&pid).unwrap_or(vec![]), DateView::from(&datetime), photos_by_post.remove(&pid).unwrap_or(vec![]));
+        let post_view = PostView::new_from(
+            post,
+            tags.remove(&pid).unwrap_or(vec![]),
+            DateView::from(&datetime),
+            photos_by_post.remove(&pid).unwrap_or(vec![]),
+        );
         posts_views.push(post_view);
     }
 
@@ -189,9 +186,5 @@ pub async fn get_atom_handler(
         TemplateError
     })?;
 
-    Ok((
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/xml")],
-        feed
-    ))
+    Ok((StatusCode::OK, [(header::CONTENT_TYPE, "text/xml")], feed))
 }

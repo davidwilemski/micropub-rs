@@ -32,9 +32,9 @@ pub trait WithDB {
         ) -> Result<T, diesel::result::Error>,
     {
         let conn = self.dbconn()?;
-        conn.transaction(|| f(&conn)).map_err(|e| self.handle_errors(e))
+        conn.transaction(|| f(&conn))
+            .map_err(|e| self.handle_errors(e))
     }
-
 }
 
 pub struct MicropubDB {
@@ -43,7 +43,7 @@ pub struct MicropubDB {
 
 impl MicropubDB {
     pub fn new(dbpool: Arc<Pool<ConnectionManager<SqliteConnection>>>) -> Self {
-        Self { dbpool: dbpool }
+        Self { dbpool }
     }
 }
 

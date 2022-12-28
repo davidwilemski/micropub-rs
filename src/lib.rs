@@ -1,8 +1,8 @@
 #[macro_use]
 extern crate diesel;
 
-use diesel::r2d2;
 use diesel::prelude::SqliteConnection;
+use diesel::r2d2;
 
 pub mod constants;
 pub mod errors;

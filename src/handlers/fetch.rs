@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use diesel::prelude::*;
 use diesel::r2d2;
-use log::{debug, info, error};
+use log::{debug, error, info};
 use warp::{reject, Rejection};
 // use warp::http::{header as http_header, Response};
 
@@ -64,17 +64,17 @@ impl FetchHandler<MicropubDB> {
             .map_err(|e| self.db.handle_errors(e))?;
 
         debug!("input datetime: {:?}", post.created_at);
-        let datetime = post_util::get_local_datetime(&post.created_at, None)
-            .map_err(|e| {
-                error!("date parsing error: {:?}", e);
-                // TODO shouldn't be a template error but realistically this would only happen if
-                // the DB had malformed data for template rendering...
-                reject::custom(TemplateError)
-            })?;
+        let datetime = post_util::get_local_datetime(&post.created_at, None).map_err(|e| {
+            error!("date parsing error: {:?}", e);
+            // TODO shouldn't be a template error but realistically this would only happen if
+            // the DB had malformed data for template rendering...
+            reject::custom(TemplateError)
+        })?;
         post.created_at = datetime.to_rfc3339();
 
         let post_view = PostView::new_from(post, tags, DateView::from(&datetime), photos);
-        let page = self.templates
+        let page = self
+            .templates
             .add_context("article", &post_view)
             .render("article.html")
             .map_err(|e| {
@@ -85,7 +85,9 @@ impl FetchHandler<MicropubDB> {
     }
 
     pub async fn fetch_media(&self, media_id: &str) -> Result<impl warp::Reply, Rejection> {
-        let resp = self.client.get(format!("http://rustyblobjectstore:3031/{}", media_id))
+        let resp = self
+            .client
+            .get(format!("http://rustyblobjectstore:3031/{}", media_id))
             .send()
             .await
             .map_err(|e| {
@@ -95,7 +97,8 @@ impl FetchHandler<MicropubDB> {
 
         use crate::schema::media::dsl::*;
         let conn = self.db.dbconn()?;
-        let media_content_type: Option<String> = media.select(content_type)
+        let media_content_type: Option<String> = media
+            .select(content_type)
             .filter(hex_digest.eq(media_id))
             .first(&conn)
             .map_err(|e| self.db.handle_errors(e))?;
@@ -103,26 +106,21 @@ impl FetchHandler<MicropubDB> {
         if resp.status() != 200 {
             Err(warp::reject::not_found())
         } else {
-            let media_body = resp.bytes()
-                .await
+            let media_body = resp.bytes().await.map_err(|e| {
+                error!("error in receiving body as bytes(): {:?}", e);
+                reject::custom(MediaFetchError)
+            })?;
+            Ok(Response::builder()
+                .status(200)
+                .header(
+                    http_header::CONTENT_TYPE,
+                    media_content_type.unwrap_or("application/octet-stream".into()),
+                )
+                .body(media_body)
                 .map_err(|e| {
-                    error!("error in receiving body as bytes(): {:?}", e);
+                    error!("error building media response: {:?}", e);
                     reject::custom(MediaFetchError)
-                })?;
-            Ok(
-                Response::builder()
-                    .status(200)
-                    .header(
-                        http_header::CONTENT_TYPE,
-                        media_content_type
-                            .unwrap_or("application/octet-stream".into())
-                    )
-                    .body(media_body)
-                    .map_err(|e| {
-                        error!("error building media response: {:?}", e);
-                        reject::custom(MediaFetchError)
-                    })?
-            )
+                })?)
         }
     }
 }
@@ -136,7 +134,8 @@ pub async fn get_post_handler(
     let db = MicropubDB::new(pool);
     let conn = db.dbconn()?;
 
-    let mut post = Post::by_slug(&url_slug).first::<Post>(&conn)
+    let mut post = Post::by_slug(&url_slug)
+        .first::<Post>(&conn)
         .map_err(|e| db.handle_errors(e))?;
 
     use crate::schema::categories::dsl as category_dsl;
@@ -154,13 +153,12 @@ pub async fn get_post_handler(
         .map_err(|e| db.handle_errors(e))?;
 
     debug!("input datetime: {:?}", post.created_at);
-    let datetime = post_util::get_local_datetime(&post.created_at, None)
-        .map_err(|e| {
-            error!("date parsing error: {:?}", e);
-            // TODO shouldn't be a template error but realistically this would only happen if
-            // the DB had malformed data for template rendering...
-            TemplateError
-        })?;
+    let datetime = post_util::get_local_datetime(&post.created_at, None).map_err(|e| {
+        error!("date parsing error: {:?}", e);
+        // TODO shouldn't be a template error but realistically this would only happen if
+        // the DB had malformed data for template rendering...
+        TemplateError
+    })?;
     post.created_at = datetime.to_rfc3339();
 
     let post_view = PostView::new_from(post, tags, DateView::from(&datetime), photos);
@@ -176,10 +174,11 @@ pub async fn get_post_handler(
 
 pub async fn get_media_handler(
     Path(media_id): Path<String>,
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let resp = client.get(format!("http://rustyblobjectstore:3031/{}", media_id))
+    let resp = client
+        .get(format!("http://rustyblobjectstore:3031/{}", media_id))
         .send()
         .await
         .map_err(|e| {
@@ -190,7 +189,8 @@ pub async fn get_media_handler(
     use crate::schema::media::dsl::*;
     let db = MicropubDB::new(pool);
     let conn = db.dbconn()?;
-    let media_content_type: Option<String> = media.select(content_type)
+    let media_content_type: Option<String> = media
+        .select(content_type)
         .filter(hex_digest.eq(media_id))
         .first(&conn)
         .map_err(|e| db.handle_errors(e))?;
@@ -198,21 +198,17 @@ pub async fn get_media_handler(
     if resp.status() != 200 {
         Err(StatusCode::NOT_FOUND)
     } else {
-        let media_body: Bytes = resp.bytes()
-            .await
-            .map_err(|e| {
-                error!("error in receiving body as bytes(): {:?}", e);
-                MediaFetchError
-            })?;
+        let media_body: Bytes = resp.bytes().await.map_err(|e| {
+            error!("error in receiving body as bytes(): {:?}", e);
+            MediaFetchError
+        })?;
         Ok((
             StatusCode::OK,
             [(
                 http::header::CONTENT_TYPE,
-                media_content_type
-                    .unwrap_or("application/octet-stream".into())
-              )
-            ],
-            media_body
+                media_content_type.unwrap_or("application/octet-stream".into()),
+            )],
+            media_body,
         ))
     }
 }

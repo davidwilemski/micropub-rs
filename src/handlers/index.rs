@@ -12,9 +12,7 @@ use crate::post_util;
 use crate::templates;
 use crate::view_models::{ArticlesPage, Date as DateView, Post as PostView};
 
-use axum::{
-    response::{Html, IntoResponse},
-};
+use axum::response::{Html, IntoResponse};
 use http::StatusCode;
 
 pub struct IndexHandler<DB: WithDB> {
@@ -59,23 +57,26 @@ impl IndexHandler<MicropubDB> {
             .map_err(|e| self.db.handle_errors(e))?;
 
         // Only on main page for indieauth login
-        let template = self.templates
+        let template = self
+            .templates
             .add_context("SOCIAL", &[crate::SOCIAL])
             .add_context("AUTH_ENDPOINT", crate::AUTH_ENDPOINT)
             .add_context("TOKEN_ENDPOINT", crate::TOKEN_ENDPOINT)
             .add_context("MICROPUB_ENDPOINT", crate::MICROPUB_ENDPOINT);
 
-        let datetime = post_util::get_local_datetime(&post.created_at, None)
-            .map_err(|e| {
-                error!("date parsing error: {:?}", e);
-                // TODO shouldn't be a template error but realistically this would only happen if
-                // the DB had malformed data for template rendering...
-                reject::custom(TemplateError)
-            })?;
+        let datetime = post_util::get_local_datetime(&post.created_at, None).map_err(|e| {
+            error!("date parsing error: {:?}", e);
+            // TODO shouldn't be a template error but realistically this would only happen if
+            // the DB had malformed data for template rendering...
+            reject::custom(TemplateError)
+        })?;
         post.created_at = datetime.to_rfc3339();
 
         let post_view = PostView::new_from(post, tags, DateView::from(&datetime), photos);
-        let articles_page = ArticlesPage { number: 1, object_list: vec![post_view] };
+        let articles_page = ArticlesPage {
+            number: 1,
+            object_list: vec![post_view],
+        };
         let page = template
             .add_context("articles_page", &articles_page)
             .render("index.html")
@@ -94,10 +95,9 @@ pub async fn get_index_handler(
     let db = MicropubDB::new(pool);
     let conn = db.dbconn()?;
 
-    let mut post =
-        Post::latest()
-            .first::<Post>(&conn)
-            .map_err(|e: diesel::result::Error| db.handle_errors(e))?;
+    let mut post = Post::latest()
+        .first::<Post>(&conn)
+        .map_err(|e: diesel::result::Error| db.handle_errors(e))?;
 
     use crate::schema::categories::dsl::*;
     let tags: Vec<String> = categories
@@ -120,17 +120,19 @@ pub async fn get_index_handler(
         .add_context("TOKEN_ENDPOINT", crate::TOKEN_ENDPOINT)
         .add_context("MICROPUB_ENDPOINT", crate::MICROPUB_ENDPOINT);
 
-    let datetime = post_util::get_local_datetime(&post.created_at, None)
-        .map_err(|e| {
-            error!("date parsing error: {:?}", e);
-            // TODO shouldn't be a template error but realistically this would only happen if
-            // the DB had malformed data for template rendering...
-            TemplateError
-        })?;
+    let datetime = post_util::get_local_datetime(&post.created_at, None).map_err(|e| {
+        error!("date parsing error: {:?}", e);
+        // TODO shouldn't be a template error but realistically this would only happen if
+        // the DB had malformed data for template rendering...
+        TemplateError
+    })?;
     post.created_at = datetime.to_rfc3339();
 
     let post_view = PostView::new_from(post, tags, DateView::from(&datetime), photos);
-    let articles_page = ArticlesPage { number: 1, object_list: vec![post_view] };
+    let articles_page = ArticlesPage {
+        number: 1,
+        object_list: vec![post_view],
+    };
     let page = template
         .add_context("articles_page", &articles_page)
         .render("index.html")
