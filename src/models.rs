@@ -73,6 +73,7 @@ impl Post {
             .into_boxed()
     }
 
+    // TODO make tag lookup case insensitive?
     pub fn by_tag<'a>(tag: &'a str) -> BoxedPostsQuery<'a> {
         use crate::schema::posts::dsl::*;
         Post::all()
