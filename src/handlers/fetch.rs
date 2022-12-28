@@ -126,15 +126,16 @@ impl FetchHandler<MicropubDB> {
 }
 
 pub async fn get_post_handler(
-    Path(url_slug): Path<String>,
+    uri: axum::http::Uri,
     pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
     templates: Arc<templates::Templates>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    let url_slug: &str = uri.path().trim_start_matches('/');
     info!("fetch_post url_slug:{:?}", url_slug);
     let db = MicropubDB::new(pool);
     let conn = db.dbconn()?;
 
-    let mut post = Post::by_slug(&url_slug)
+    let mut post = Post::by_slug(url_slug)
         .first::<Post>(&conn)
         .map_err(|e| db.handle_errors(e))?;
 

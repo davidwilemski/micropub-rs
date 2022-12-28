@@ -165,15 +165,17 @@ async fn main() -> Result<(), anyhow::Error> {
             )
             .handle_error(handle_error),
         )
-        .route(
-            "/:url_slug",
+        // Handle posts as a fallback
+        // XXX not sure if there's a more idiomatic way.
+        // Tried a wildcard match on /*url_slug but that panicked due to path conflicts
+        .fallback(
             get({
                 let dbpool = dbpool.clone();
-                move |url_slug| {
+                move |uri: axum::http::Uri| {
                     info!("in get post handler");
-                    handlers::get_post_handler(url_slug, dbpool.clone(), templates.clone())
+                    handlers::get_post_handler(uri, dbpool.clone(), templates.clone())
                 }
-            }),
+            })
         );
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3030));
