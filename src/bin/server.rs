@@ -8,7 +8,7 @@ use warp::http::StatusCode;
 use warp::Rejection;
 
 use axum::{
-    extract::{Path, RawBody},
+    extract::{Path, Query},
     http::HeaderMap,
     response::IntoResponse,
     routing::{get, on_service, post, MethodFilter},
@@ -143,7 +143,22 @@ async fn main() -> Result<(), anyhow::Error> {
                 move |headers: HeaderMap, body| {
                     handlers::handle_post(client.clone(), db.clone(), config.clone(), headers, body)
                 }
-            }),
+            }).get({
+                let db = micropub_db.clone();
+                let client = http_client.clone();
+                let config = media_config.clone();
+
+                move |headers, query| {
+                    handlers::handle_query(
+                        client.clone(),
+                        db.clone(),
+                        config.clone(),
+                        headers,
+                        query
+                    )
+                }
+
+            })
         )
         .route(
             "/tag/:tag",

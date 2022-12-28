@@ -17,7 +17,7 @@ use crate::{media_util, post_util};
 use crate::schema::{categories, original_blobs, posts, photos, media};
 
 use axum::{
-    extract::{Multipart, RawBody},
+    extract::{Multipart, RawBody, Query},
     response::{IntoResponse},
 };
 use http::{header, StatusCode, HeaderValue};
@@ -512,8 +512,8 @@ pub async fn handle_query(
     http_client: Arc<reqwest::Client>,
     db: Arc<MicropubDB>,
     config: Arc<serde_json::Value>,
-    auth: String,
-    query: Vec<(String, String)>,
+    headers: axum::http::HeaderMap,
+    query: Query<Vec<(String, String)>>,
 ) -> Result<impl IntoResponse, StatusCode> {
     // looking for ?q=config
     info!("query: {:?}", query);
@@ -526,14 +526,23 @@ pub async fn handle_query(
     });
     if let Some(_) = is_query {
         // verify auth
-        let validate_response = verify_auth(http_client, db, config.clone(), &auth).await?;
+        if let Some(auth_val) = headers.get("Authorization") {
+            let auth: &str = auth_val.to_str()
+                .map_err(|e| {
+                    error!("failed to to_str() on auth_val: {:?}", e);
+                    StatusCode::INTERNAL_SERVER_ERROR
+                })?;
+            let validate_response = verify_auth(http_client, db, config.clone(), auth).await?;
 
-        if validate_response.me != crate::HOST_WEBSITE {
-            return Err(StatusCode::FORBIDDEN);
+            if validate_response.me != crate::HOST_WEBSITE {
+                return Err(StatusCode::FORBIDDEN);
+            }
+
+            // return media endpoint
+            return Ok(config.to_string())
+        } else {
+            return Err(StatusCode::UNAUTHORIZED);
         }
-
-        // return media endpoint
-        return Ok(config.to_string())
     }
 
     // TODO handle other types of queries like content queries
