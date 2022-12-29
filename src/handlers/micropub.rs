@@ -437,17 +437,6 @@ fn get_latest_post_id(conn: &SqliteConnection) -> Result<i32, diesel::result::Er
     posts.select(id).order(id.desc()).limit(1).first(conn)
 }
 
-// http_client: reqwest::Client,
-// db: DB,
-// config: serde_json::Value,
-
-    // TODO probably make this a struct down the road?
-
-    // http_client: reqwest::Client::new(),
-    // db: MicropubDB::new(pool),
-    // config: config,
-
-
 pub async fn handle_post(
     http_client: Arc<reqwest::Client>,
     db: Arc<MicropubDB>,

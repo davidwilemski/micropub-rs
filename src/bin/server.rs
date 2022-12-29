@@ -9,7 +9,7 @@ use axum::{
     extract::Path,
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
-    routing::{get, on_service, post, MethodFilter},
+    routing::{get, on, on_service, post, MethodFilter},
     Router,
 };
 use std::net::SocketAddr;
@@ -65,31 +65,39 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let templates = Arc::new(templates::Templates::new(tera, base_ctx));
 
-                eprintln!("{:?}", std::path::Path::new(&template_dir).join("static"));
     let app = Router::new()
         .route(
             "/",
-            get({
-                let dbpool = dbpool.clone();
-                let templates = templates.clone();
-                move || handlers::get_index_handler(dbpool.clone(), templates.clone())
-            }),
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    let templates = templates.clone();
+                    move || handlers::get_index_handler(dbpool.clone(), templates.clone())
+                }
+            ),
         )
         .route(
             "/archives",
-            get({
-                let dbpool = dbpool.clone();
-                let templates = templates.clone();
-                move || handlers::get_archive_handler(None, dbpool.clone(), templates.clone())
-            }),
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    let templates = templates.clone();
+                    move || handlers::get_archive_handler(None, dbpool.clone(), templates.clone())
+                }
+            ),
         )
         .route(
             "/feeds/all.atom.xml",
-            get({
-                let dbpool = dbpool.clone();
-                let templates = Arc::new(crate::templates::Templates::atom_default(atom_ctx));
-                move || handlers::get_atom_handler(dbpool.clone(), templates.clone())
-            }),
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    let templates = Arc::new(crate::templates::Templates::atom_default(atom_ctx));
+                    move || handlers::get_atom_handler(dbpool.clone(), templates.clone())
+                }
+            ),
         )
         .route(
             "/media",
@@ -109,11 +117,13 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .route(
             "/media/:media_id",
-            get({
-                let dbpool = dbpool.clone();
-                let client = http_client.clone();
-                move |media_id| {
-                    handlers::get_media_handler(media_id, client.clone(), dbpool.clone())
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    let client = http_client.clone();
+                    move |media_id| {
+                        handlers::get_media_handler(media_id, client.clone(), dbpool.clone())
                 }
             }),
         )
@@ -143,13 +153,16 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .route(
             "/tag/:tag",
-            get({
-                let dbpool = dbpool.clone();
-                let templates = templates.clone();
-                move |Path(tag): Path<String>| {
-                    handlers::get_archive_handler(Some(tag), dbpool.clone(), templates.clone())
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    let templates = templates.clone();
+                    move |Path(tag): Path<String>| {
+                        handlers::get_archive_handler(Some(tag), dbpool.clone(), templates.clone())
+                    }
                 }
-            }),
+            ),
         )
         .nest(
             "/theme",
@@ -165,13 +178,16 @@ async fn main() -> Result<(), anyhow::Error> {
         // XXX not sure if there's a more idiomatic way.
         // Tried a wildcard match on /*url_slug but that panicked due to path conflicts
         .fallback(
-            get({
-                let dbpool = dbpool.clone();
-                move |uri: axum::http::Uri| {
-                    info!("in get post handler");
-                    handlers::get_post_handler(uri, dbpool.clone(), templates.clone())
+            on(
+                MethodFilter::GET.union(MethodFilter::HEAD),
+                {
+                    let dbpool = dbpool.clone();
+                    move |uri: axum::http::Uri| {
+                        info!("in get post handler");
+                        handlers::get_post_handler(uri, dbpool.clone(), templates.clone())
+                    }
                 }
-            })
+            )
         );
 
     let addr = SocketAddr::from(([127, 0, 0, 1], 3030));
