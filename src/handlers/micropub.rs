@@ -542,15 +542,24 @@ pub async fn handle_query(
 pub async fn handle_media_upload(
     http_client: Arc<reqwest::Client>,
     db: Arc<MicropubDB>,
-    config: Arc<serde_json::Value>,
-    auth: String,
+    headers: axum::http::HeaderMap,
     mut multipart_data: Multipart,
 ) -> Result<impl IntoResponse, StatusCode> {
     // verify auth
-    let validate_response = verify_auth(http_client, db.clone(), config.clone(), &auth).await?;
+    if let Some(auth_val) = headers.get("Authorization") {
+        let auth: &str = auth_val.to_str()
+            .map_err(|e| {
+                error!("failed to to_str() on auth_val: {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
 
-    if validate_response.me != crate::HOST_WEBSITE {
-        return Err(StatusCode::FORBIDDEN);
+        let validate_response = verify_auth(http_client, &auth).await?;
+
+        if validate_response.me != crate::HOST_WEBSITE {
+            return Err(StatusCode::FORBIDDEN);
+        }
+    } else {
+        return Err(StatusCode::UNAUTHORIZED);
     }
 
     // find Part that has the name 'file'

@@ -92,6 +92,22 @@ async fn main() -> Result<(), anyhow::Error> {
             }),
         )
         .route(
+            "/media",
+            post({
+                let db = micropub_db.clone();
+                let client = http_client.clone();
+
+                move |headers, multipart| {
+                    handlers::handle_media_upload(
+                        client.clone(), 
+                        db.clone(),
+                        headers,
+                        multipart
+                    )
+                }
+            }),
+        )
+        .route(
             "/media/:media_id",
             get({
                 let dbpool = dbpool.clone();
