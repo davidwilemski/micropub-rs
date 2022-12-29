@@ -6,6 +6,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2022-12-29
+### Changed
+- Ported web server to axum from warp
+- Nix docker build now tags image based on Cargo.toml
+
 ## [0.7.0] - 2022-02-22
 ### Added
 - Strip EXIF tags from images when upload format is identifiable (ImageMagick dependency)
