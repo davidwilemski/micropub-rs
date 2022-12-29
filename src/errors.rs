@@ -1,5 +1,4 @@
 use http::StatusCode;
-use warp::reject;
 
 #[derive(Debug)]
 pub struct DBError {
@@ -14,7 +13,6 @@ impl DBError {
         DBError { not_found: true }
     }
 }
-impl reject::Reject for DBError {}
 impl From<DBError> for StatusCode {
     fn from(e: DBError) -> Self {
         if e.not_found {
@@ -27,11 +25,9 @@ impl From<DBError> for StatusCode {
 
 #[derive(Debug)]
 pub struct JSONSerializationError;
-impl reject::Reject for JSONSerializationError {}
 
 #[derive(Debug)]
 pub struct TemplateError;
-impl reject::Reject for TemplateError {}
 impl From<TemplateError> for StatusCode {
     fn from(e: TemplateError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
@@ -40,7 +36,6 @@ impl From<TemplateError> for StatusCode {
 
 #[derive(Debug)]
 pub struct HTTPClientError;
-impl reject::Reject for HTTPClientError {}
 impl From<HTTPClientError> for StatusCode {
     fn from(e: HTTPClientError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
@@ -49,7 +44,6 @@ impl From<HTTPClientError> for StatusCode {
 
 #[derive(Debug)]
 pub struct ValidateResponseDeserializeError;
-impl reject::Reject for ValidateResponseDeserializeError {}
 impl From<ValidateResponseDeserializeError> for StatusCode {
     fn from(e: ValidateResponseDeserializeError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
@@ -58,11 +52,9 @@ impl From<ValidateResponseDeserializeError> for StatusCode {
 
 #[derive(Debug)]
 pub struct NotAuthorized;
-impl reject::Reject for NotAuthorized {}
 
 #[derive(Debug)]
 pub struct MediaUploadError;
-impl reject::Reject for MediaUploadError {}
 impl From<MediaUploadError> for StatusCode {
     fn from(e: MediaUploadError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
@@ -71,7 +63,6 @@ impl From<MediaUploadError> for StatusCode {
 
 #[derive(Debug)]
 pub struct MediaFetchError;
-impl reject::Reject for MediaFetchError {}
 impl From<MediaFetchError> for StatusCode {
     fn from(e: MediaFetchError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
@@ -80,7 +71,6 @@ impl From<MediaFetchError> for StatusCode {
 
 #[derive(Debug)]
 pub struct MediaStripError(&'static str);
-impl reject::Reject for MediaStripError {}
 impl From<MediaStripError> for StatusCode {
     fn from(e: MediaStripError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
