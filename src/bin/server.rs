@@ -2,14 +2,12 @@ use std::env;
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use log::{error, info};
+use log::info;
 use serde_json::json;
-use warp::http::StatusCode;
-use warp::Rejection;
 
 use axum::{
-    extract::{Path, Query},
-    http::HeaderMap,
+    extract::Path,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, on_service, post, MethodFilter},
     Router,
@@ -18,42 +16,12 @@ use std::net::SocketAddr;
 use tower_http::services::ServeDir;
 
 use micropub_rs::constants::*;
-use micropub_rs::errors;
 use micropub_rs::handler;
 use micropub_rs::handlers;
 use micropub_rs::templates;
 
 async fn handle_error(_err: std::io::Error) -> impl IntoResponse {
     (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong...")
-}
-
-async fn handle_rejection(err: Rejection) -> Result<impl warp::Reply, Rejection> {
-    // TODO JSON errors?
-    if let Some(errors::NotAuthorized) = err.find() {
-        error!("Handling NotAuthorized error: {:?}", err);
-        return Ok(warp::reply::with_status(
-            "Not Authorized",
-            StatusCode::FORBIDDEN,
-        ));
-    }
-
-    let internal_server_error =
-        warp::reply::with_status("", warp::http::StatusCode::INTERNAL_SERVER_ERROR);
-
-    // Technically these really are not needed as 500 is the default response
-    // for custom rejections but we could do some instrumentation or logging
-    // here or whatever.
-    if let Some(errors::HTTPClientError) = err.find() {
-        error!("Handling HTTPClientError: {:?}", err);
-        return Ok(internal_server_error);
-    }
-    if let Some(errors::ValidateResponseDeserializeError) = err.find() {
-        error!("Handling ValidateResponseDeserializeError: {:?}", err);
-        return Ok(internal_server_error);
-    }
-
-    // Otherwise pass the rejection through the filter stack
-    Err(err)
 }
 
 #[tokio::main]
@@ -138,20 +106,17 @@ async fn main() -> Result<(), anyhow::Error> {
             post({
                 let db = micropub_db.clone();
                 let client = http_client.clone();
-                let config = media_config.clone();
 
                 move |headers: HeaderMap, body| {
-                    handlers::handle_post(client.clone(), db.clone(), config.clone(), headers, body)
+                    handlers::handle_post(client.clone(), db.clone(), headers, body)
                 }
             }).get({
-                let db = micropub_db.clone();
                 let client = http_client.clone();
                 let config = media_config.clone();
 
                 move |headers, query| {
                     handlers::handle_query(
                         client.clone(),
-                        db.clone(),
                         config.clone(),
                         headers,
                         query

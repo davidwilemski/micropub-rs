@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use chrono::Local;
 use diesel::prelude::*;
-use diesel::r2d2;
 use log::{info, error};
 use reqwest;
 use url::form_urlencoded::parse;
@@ -18,7 +17,7 @@ use crate::schema::{categories, original_blobs, posts, photos, media};
 
 use axum::{
     extract::{Multipart, RawBody, Query},
-    response::{IntoResponse},
+    response::IntoResponse,
 };
 use http::{header, StatusCode, HeaderValue};
 
@@ -318,10 +317,7 @@ impl MicropubFormBuilder {
                         Some(MicropubPropertyValue::Value(alt)) => Some(alt),
                         _ => None
                     };
-                    let photo = Photo {
-                        url: url,
-                        alt: alt,
-                    };
+                    let photo = Photo {url, alt};
                     self.add_photo(photo);
                 }
             },
@@ -332,10 +328,7 @@ impl MicropubFormBuilder {
                             Some(MicropubPropertyValue::Value(alt)) => Some(alt),
                             _ => None
                         };
-                        let photo = Photo {
-                            url: url,
-                            alt: alt,
-                        };
+                        let photo = Photo {url, alt};
                         self.add_photo(photo);
                     }
                 }
@@ -458,9 +451,6 @@ fn get_latest_post_id(conn: &SqliteConnection) -> Result<i32, diesel::result::Er
 pub async fn handle_post(
     http_client: Arc<reqwest::Client>,
     db: Arc<MicropubDB>,
-    config: Arc<serde_json::Value>,
-    // content_type: Option<&HeaderValue>,
-    // auth: Option<&HeaderValue>,
     headers: http::header::HeaderMap,
     RawBody(body): RawBody<axum::body::Body>,
 ) -> Result<impl IntoResponse, StatusCode> {
@@ -481,7 +471,7 @@ pub async fn handle_post(
         })?
         .into();
 
-    let validate_response = verify_auth(http_client, db.clone(), config, &auth_header_val).await?;
+    let validate_response = verify_auth(http_client, &auth_header_val).await?;
 
     if validate_response.me != crate::HOST_WEBSITE {
         return Err(StatusCode::FORBIDDEN);
@@ -510,7 +500,6 @@ pub async fn handle_post(
 
 pub async fn handle_query(
     http_client: Arc<reqwest::Client>,
-    db: Arc<MicropubDB>,
     config: Arc<serde_json::Value>,
     headers: axum::http::HeaderMap,
     query: Query<Vec<(String, String)>>,
@@ -532,7 +521,7 @@ pub async fn handle_query(
                     error!("failed to to_str() on auth_val: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            let validate_response = verify_auth(http_client, db, config.clone(), auth).await?;
+            let validate_response = verify_auth(http_client, auth).await?;
 
             if validate_response.me != crate::HOST_WEBSITE {
                 return Err(StatusCode::FORBIDDEN);
@@ -748,7 +737,7 @@ pub async fn create_post(
             .category
             .iter()
             .map(|c| NewCategory {
-                post_id: post_id,
+                post_id,
                 category: c.as_str(),
             })
             .collect();
@@ -760,7 +749,7 @@ pub async fn create_post(
         }
 
         let original_blob = NewOriginalBlob {
-            post_id: post_id,
+            post_id,
             post_blob: &body,
         };
         diesel::insert_into(original_blobs::table)
@@ -771,7 +760,7 @@ pub async fn create_post(
             let new_photos: Vec<NewPhoto> = photos
                 .iter()
                 .map(|p| NewPhoto {
-                    post_id: post_id,
+                    post_id,
                     url: p.url.as_str(),
                     alt: p.alt.as_ref().map(|a| a.as_str()),
                 })
@@ -792,8 +781,6 @@ pub async fn create_post(
 
 async fn verify_auth(
     http_client: Arc<reqwest::Client>,
-    db: Arc<MicropubDB>,
-    config: Arc<serde_json::Value>,
     auth: &str,
 ) -> Result<TokenValidateResponse, StatusCode> {
 
