@@ -88,7 +88,7 @@ impl Post {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "posts"]
+#[diesel(table_name = posts)]
 pub struct NewPost<'a> {
     pub slug: &'a str,
     pub entry_type: &'a str,
@@ -102,21 +102,21 @@ pub struct NewPost<'a> {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "categories"]
+#[diesel(table_name = categories)]
 pub struct NewCategory<'a> {
     pub post_id: i32,
     pub category: &'a str,
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "original_blobs"]
+#[diesel(table_name = original_blobs)]
 pub struct NewOriginalBlob<'a> {
     pub post_id: i32,
     pub post_blob: &'a [u8],
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "media"]
+#[diesel(table_name = media)]
 pub struct NewMediaUpload<'a> {
     pub hex_digest: &'a str,
     pub filename: Option<&'a str>,
@@ -124,7 +124,7 @@ pub struct NewMediaUpload<'a> {
 }
 
 #[derive(Debug, Insertable)]
-#[table_name = "photos"]
+#[diesel(table_name = photos)]
 pub struct NewPhoto<'a> {
     pub post_id: i32,
     pub url: &'a str,

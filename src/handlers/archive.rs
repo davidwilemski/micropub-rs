@@ -22,11 +22,11 @@ pub async fn get_archive_handler(
 ) -> Result<impl IntoResponse, StatusCode> {
     let tag_ref = tag.as_ref().map(|t| t.as_str());
     let db = MicropubDB::new(pool);
-    let conn = db.dbconn()?;
+    let mut conn = db.dbconn()?;
     let posts = tag_ref
         .map(|t| Post::by_tag(t))
         .unwrap_or(Post::all())
-        .load::<Post>(&conn)
+        .load::<Post>(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
 
     use crate::schema::categories::dsl::*;
@@ -35,7 +35,7 @@ pub async fn get_archive_handler(
     let mut query_result: Vec<(i32, String)> = categories
         .select((post_id, category))
         .filter(post_id.eq_any(post_ids))
-        .get_results(&conn)
+        .get_results(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
     query_result.sort_by_key(|item| item.0);
     let mut tags: HashMap<i32, Vec<String>> = HashMap::new();

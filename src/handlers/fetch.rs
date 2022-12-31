@@ -25,24 +25,24 @@ pub async fn get_post_handler(
     let url_slug: &str = uri.path().trim_start_matches('/');
     info!("fetch_post url_slug:{:?}", url_slug);
     let db = MicropubDB::new(pool);
-    let conn = db.dbconn()?;
+    let mut conn = db.dbconn()?;
 
     let mut post = Post::by_slug(url_slug)
-        .first::<Post>(&conn)
+        .first::<Post>(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
 
     use crate::schema::categories::dsl as category_dsl;
     let tags: Vec<String> = category_dsl::categories
         .select(category_dsl::category)
         .filter(category_dsl::post_id.eq(post.id))
-        .get_results(&conn)
+        .get_results(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
 
     use crate::schema::photos::dsl as photos_dsl;
     let photos: Vec<(String, Option<String>)> = photos_dsl::photos
         .select((photos_dsl::url, photos_dsl::alt))
         .filter(photos_dsl::post_id.eq(post.id))
-        .get_results(&conn)
+        .get_results(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
 
     debug!("input datetime: {:?}", post.created_at);
@@ -81,11 +81,11 @@ pub async fn get_media_handler(
 
     use crate::schema::media::dsl::*;
     let db = MicropubDB::new(pool);
-    let conn = db.dbconn()?;
+    let mut conn = db.dbconn()?;
     let media_content_type: Option<String> = media
         .select(content_type)
         .filter(hex_digest.eq(media_id))
-        .first(&conn)
+        .first(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
 
     if resp.status() != 200 {

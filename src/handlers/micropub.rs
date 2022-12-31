@@ -432,7 +432,7 @@ impl TokenValidateResponse {
     }
 }
 
-fn get_latest_post_id(conn: &SqliteConnection) -> Result<i32, diesel::result::Error> {
+fn get_latest_post_id(conn: &mut SqliteConnection) -> Result<i32, diesel::result::Error> {
     use crate::schema::posts::dsl::*;
     posts.select(id).order(id.desc()).limit(1).first(conn)
 }
@@ -634,10 +634,10 @@ pub async fn handle_media_upload(
                     filename: filename.as_deref(),
                     content_type: content_type.as_deref(),
                 };
-                let conn = db.dbconn()?;
+                let mut conn = db.dbconn()?;
                 diesel::insert_into(media::table)
                     .values(&new_media)
-                    .execute(&conn)
+                    .execute(&mut conn)
                     .map_err(|e| {
                         error!("error inserting hex digest into media uploads: {:?}", e);
                         DBError::new()

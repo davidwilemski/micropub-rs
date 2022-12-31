@@ -25,10 +25,10 @@ pub async fn get_atom_handler(
     templates: Arc<templates::Templates>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let db = MicropubDB::new(pool);
-    let conn = db.dbconn()?;
+    let mut conn = db.dbconn()?;
 
     let posts = Post::all()
-        .load::<Post>(&conn)
+        .load::<Post>(&mut conn)
         .map_err(|e: diesel::result::Error| db.handle_errors(e))?;
 
     use crate::schema::categories::dsl::*;
@@ -37,7 +37,7 @@ pub async fn get_atom_handler(
     let mut query_result: Vec<(i32, String)> = categories
         .select((post_id, category))
         .filter(post_id.eq_any(&post_ids))
-        .get_results(&conn)
+        .get_results(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
 
     query_result.sort_by_key(|item| item.0);
@@ -50,7 +50,7 @@ pub async fn get_atom_handler(
     let photos: Vec<(i32, String, Option<String>)> = photos_dsl::photos
         .select((photos_dsl::post_id, photos_dsl::url, photos_dsl::alt))
         .filter(photos_dsl::post_id.eq_any(&post_ids))
-        .get_results(&conn)
+        .get_results(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
     let mut photos_by_post: HashMap<i32, Vec<(String, Option<String>)>> = HashMap::new();
     for (post_id_, url, alt) in photos {

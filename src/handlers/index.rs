@@ -18,24 +18,24 @@ pub async fn get_index_handler(
     templates: Arc<templates::Templates>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let db = MicropubDB::new(pool);
-    let conn = db.dbconn()?;
+    let mut conn = db.dbconn()?;
 
     let mut post = Post::latest()
-        .first::<Post>(&conn)
+        .first::<Post>(&mut conn)
         .map_err(|e: diesel::result::Error| db.handle_errors(e))?;
 
     use crate::schema::categories::dsl::*;
     let tags: Vec<String> = categories
         .select(category)
         .filter(post_id.eq(post.id))
-        .get_results(&conn)
+        .get_results(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
 
     use crate::schema::photos::dsl as photos_dsl;
     let photos: Vec<(String, Option<String>)> = photos_dsl::photos
         .select((photos_dsl::url, photos_dsl::alt))
         .filter(photos_dsl::post_id.eq(post.id))
-        .get_results(&conn)
+        .get_results(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
 
     // Only on main page for indieauth login

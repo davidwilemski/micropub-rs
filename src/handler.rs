@@ -28,11 +28,11 @@ pub trait WithDB {
     fn run_txn<T, F>(&self, f: F) -> Result<T, DBError>
     where
         F: FnOnce(
-            &PooledConnection<ConnectionManager<SqliteConnection>>,
+            &mut PooledConnection<ConnectionManager<SqliteConnection>>,
         ) -> Result<T, diesel::result::Error>,
     {
-        let conn = self.dbconn()?;
-        conn.transaction(|| f(&conn))
+        let mut conn = self.dbconn()?;
+        conn.transaction(|c| f(c))
             .map_err(|e| self.handle_errors(e))
     }
 }

@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, TimeZone};
+use chrono::{DateTime, Local};
 
 fn get_first_n(n: usize, input: &str) -> String {
     input
