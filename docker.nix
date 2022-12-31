@@ -7,8 +7,8 @@ let
   pkgs = import sources.nixpkgs { };
   micropub-rs = import ./micropub-rs.nix { inherit sources pkgs; };
 
-  micropubCargoToml = builtins.fromTOML (builtins.readFile "Cargo.toml");
-  micropubVersion = micropubCargoToml.version;
+  micropubCargoToml = builtins.fromTOML (builtins.readFile ./Cargo.toml);
+  micropubVersion = micropubCargoToml.package.version;
 
 in pkgs.dockerTools.buildLayeredImage {
   name = "dtw0/micropub-rs";
