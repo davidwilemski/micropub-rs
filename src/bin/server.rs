@@ -166,25 +166,26 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .nest(
             "/theme",
-            on_service(
-                MethodFilter::GET.union(MethodFilter::HEAD),
-                ServeDir::new(
-                    std::path::Path::new(&template_dir).join("static")
+            Router::new().route(
+                "/*path",
+                on_service(
+                    MethodFilter::GET.union(MethodFilter::HEAD),
+                    ServeDir::new(
+                        std::path::Path::new(&template_dir).join("static")
+                    )
                 )
+                .handle_error(handle_error)
             )
-            .handle_error(handle_error),
         )
-        // Handle posts as a fallback
-        // XXX not sure if there's a more idiomatic way.
-        // Tried a wildcard match on /*url_slug but that panicked due to path conflicts
-        .fallback(
+        .route(
+            "/*post_slug",
             on(
                 MethodFilter::GET.union(MethodFilter::HEAD),
                 {
                     let dbpool = dbpool.clone();
-                    move |uri: axum::http::Uri| {
+                    move |Path(post_slug): Path<String>| {
                         info!("in get post handler");
-                        handlers::get_post_handler(uri, dbpool.clone(), templates.clone())
+                        handlers::get_post_handler(post_slug, dbpool.clone(), templates.clone())
                     }
                 }
             )

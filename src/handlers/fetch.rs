@@ -18,16 +18,15 @@ use crate::templates;
 use crate::view_models::{Date as DateView, Post as PostView};
 
 pub async fn get_post_handler(
-    uri: axum::http::Uri,
+    url_slug: String,
     pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
     templates: Arc<templates::Templates>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let url_slug: &str = uri.path().trim_start_matches('/');
     info!("fetch_post url_slug:{:?}", url_slug);
     let db = MicropubDB::new(pool);
     let mut conn = db.dbconn()?;
 
-    let mut post = Post::by_slug(url_slug)
+    let mut post = Post::by_slug(&url_slug)
         .first::<Post>(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
 
