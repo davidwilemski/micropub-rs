@@ -68,9 +68,10 @@ pub async fn get_media_handler(
     Path(media_id): Path<String>,
     client: Arc<reqwest::Client>,
     pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
+    blobject_store_base_uri: Arc<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let resp = client
-        .get(format!("http://rustyblobjectstore:3031/{}", media_id))
+        .get(format!("{}/{}", blobject_store_base_uri, media_id))
         .send()
         .await
         .map_err(|e| {
