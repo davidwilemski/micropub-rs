@@ -66,7 +66,7 @@ pub async fn get_post_handler(
 
 pub async fn get_media_handler(
     Path(media_id): Path<String>,
-    client: Arc<reqwest::Client>,
+    client: reqwest::Client,
     pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
     blobject_store_base_uri: Arc<String>,
 ) -> Result<impl IntoResponse, StatusCode> {

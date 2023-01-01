@@ -438,7 +438,7 @@ fn get_latest_post_id(conn: &mut SqliteConnection) -> Result<i32, diesel::result
 }
 
 pub async fn handle_post(
-    http_client: Arc<reqwest::Client>,
+    http_client: reqwest::Client,
     db: Arc<MicropubDB>,
     headers: http::header::HeaderMap,
     RawBody(body): RawBody<axum::body::Body>,
@@ -488,7 +488,7 @@ pub async fn handle_post(
 }
 
 pub async fn handle_query(
-    http_client: Arc<reqwest::Client>,
+    http_client: reqwest::Client,
     config: Arc<serde_json::Value>,
     headers: axum::http::HeaderMap,
     query: Query<Vec<(String, String)>>,
@@ -529,7 +529,7 @@ pub async fn handle_query(
 
 // TODO look at axum DefaultBodyLimit and adjust
 pub async fn handle_media_upload(
-    http_client: Arc<reqwest::Client>,
+    http_client: reqwest::Client,
     db: Arc<MicropubDB>,
     headers: axum::http::HeaderMap,
     mut multipart_data: Multipart,
@@ -773,7 +773,7 @@ pub async fn create_post(
 }
 
 async fn verify_auth(
-    http_client: Arc<reqwest::Client>,
+    http_client: reqwest::Client,
     auth: &str,
 ) -> Result<TokenValidateResponse, StatusCode> {
 

@@ -39,7 +39,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", BLOBJECT_STORE_BASE_URI_VAR, e)))?;
     let dbpool = Arc::new(micropub_rs::new_dbconn_pool(&dbfile)?);
     let micropub_db = Arc::new(handler::MicropubDB::new(dbpool.clone()));
-    let http_client = Arc::new(reqwest::Client::new());
+    let http_client = reqwest::Client::new();
     info!("created dbpool from {:?}", dbfile);
 
     let template_pattern = std::path::Path::new(&template_dir).join("templates/**/*.html");
