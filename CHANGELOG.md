@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2023-01-01
+### Added
+- Adds `MICROPUB_RS_BLOBJECT_STORE_BASE_URI` environment variable to configure the rustyblobjectstore endpoint
+
+### Changed
+- Updated deps to latest versions
+
 ## [0.8.0] - 2022-12-29
 ### Changed
 - Ported web server to axum from warp
