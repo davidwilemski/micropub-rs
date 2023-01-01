@@ -533,6 +533,7 @@ pub async fn handle_media_upload(
     db: Arc<MicropubDB>,
     headers: axum::http::HeaderMap,
     mut multipart_data: Multipart,
+    blobject_store_base_uri: Arc<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
     // verify auth
     if let Some(auth_val) = headers.get("Authorization") {
@@ -542,7 +543,7 @@ pub async fn handle_media_upload(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
-        let validate_response = verify_auth(http_client, &auth).await?;
+        let validate_response = verify_auth(http_client.clone(), &auth).await?;
 
         if validate_response.me != crate::HOST_WEBSITE {
             return Err(StatusCode::FORBIDDEN);
@@ -596,14 +597,8 @@ pub async fn handle_media_upload(
                 };
 
                 // PUT to rustyblobjectstore backend
-                // TODO don't create new client each time so that we get things like connection
-                // pooling/reuse.
-                // Not super important for this use case given that posts (and media posts
-                // specifically) are relatively rare. For the read path, this is potentially a
-                // little bit more important.
-                let client = reqwest::Client::new();
                 // TODO make object store URL configurable
-                let resp = client.put("http://rustyblobjectstore:3031/")
+                let resp = http_client.put(&*blobject_store_base_uri)
                     .body(contents)
                     .send()
                     .await

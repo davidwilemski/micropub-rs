@@ -35,9 +35,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let media_endpoint = env::var(MEDIA_ENDPOINT_VAR)
         .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", MEDIA_ENDPOINT_VAR, e)))?;
     let blobject_store_base_uri: Arc<String> = env::var(BLOBJECT_STORE_BASE_URI_VAR)
-        .or(Ok("http://rustyblobjectstore:3031".into()))
         .map(|s| Arc::new(s))
-        .expect("provided a fallback, shouldn't fail to unwrap");
+        .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", BLOBJECT_STORE_BASE_URI_VAR, e)))?;
     let dbpool = Arc::new(micropub_rs::new_dbconn_pool(&dbfile)?);
     let micropub_db = Arc::new(handler::MicropubDB::new(dbpool.clone()));
     let http_client = Arc::new(reqwest::Client::new());
@@ -108,13 +107,15 @@ async fn main() -> Result<(), anyhow::Error> {
             post({
                 let db = micropub_db.clone();
                 let client = http_client.clone();
+                let blobject_store = blobject_store_base_uri.clone();
 
                 move |headers, multipart| {
                     handlers::handle_media_upload(
                         client.clone(), 
                         db.clone(),
                         headers,
-                        multipart
+                        multipart,
+                        blobject_store.clone(),
                     )
                 }
             }),
@@ -126,12 +127,13 @@ async fn main() -> Result<(), anyhow::Error> {
                 {
                     let dbpool = dbpool.clone();
                     let client = http_client.clone();
+                    let blobject_store = blobject_store_base_uri.clone();
                     move |media_id| {
                         handlers::get_media_handler(
                             media_id,
                             client.clone(),
                             dbpool.clone(),
-                            blobject_store_base_uri.clone(),
+                            blobject_store.clone(),
                         )
                 }
             }),
