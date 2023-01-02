@@ -14,7 +14,7 @@ pub struct Templates {
 impl Templates {
     pub fn new(tera: std::sync::Arc<Tera>, base_ctx: TeraContext) -> Self {
         Self {
-            tera: tera,
+            tera,
             ctx: base_ctx,
         }
     }
