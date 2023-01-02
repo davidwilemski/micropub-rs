@@ -28,6 +28,8 @@ async fn handle_error(_err: std::io::Error) -> impl IntoResponse {
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
 
+    let micropub_version = env!("CARGO_PKG_VERSION");
+
     let dbfile = env::var("DATABASE_URL")
         .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", "DATABASE_URL", e)))?;
     let template_dir = env::var(TEMPLATE_DIR_VAR)
@@ -49,6 +51,7 @@ async fn main() -> Result<(), anyhow::Error> {
             .ok_or(anyhow!("missing templates directory"))?,
     )?);
     let mut base_ctx = tera::Context::new();
+    base_ctx.insert("MICROPUB_RS_VERSION", micropub_version);
     base_ctx.insert("DEFAULT_LANG", "en-US");
     base_ctx.insert("SITENAME", "David's Blog");
     base_ctx.insert("SITEURL", "");
