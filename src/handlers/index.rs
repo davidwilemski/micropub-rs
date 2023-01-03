@@ -16,6 +16,7 @@ use crate::view_models::{ArticlesPage, Date as DateView, Post as PostView};
 pub async fn get_index_handler(
     pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
     templates: Arc<templates::Templates>,
+    site_config: Arc<crate::MicropubSiteConfig>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let db = MicropubDB::new(pool);
     let mut conn = db.dbconn()?;
@@ -40,10 +41,10 @@ pub async fn get_index_handler(
 
     // Only on main page for indieauth login
     let template = templates
-        .add_context("SOCIAL", &[crate::SOCIAL])
-        .add_context("AUTH_ENDPOINT", crate::AUTH_ENDPOINT)
-        .add_context("TOKEN_ENDPOINT", crate::TOKEN_ENDPOINT)
-        .add_context("MICROPUB_ENDPOINT", crate::MICROPUB_ENDPOINT);
+        .add_context("SOCIAL", &site_config.site.socials)
+        .add_context("AUTH_ENDPOINT", &site_config.micropub.auth_endpoint)
+        .add_context("TOKEN_ENDPOINT", &site_config.micropub.auth_token_endpoint)
+        .add_context("MICROPUB_ENDPOINT", &site_config.micropub.micropub_endpoint);
 
     let datetime = post_util::get_local_datetime(&post.created_at, None).map_err(|e| {
         error!("date parsing error: {:?}", e);

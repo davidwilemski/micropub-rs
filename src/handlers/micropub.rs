@@ -440,6 +440,7 @@ fn get_latest_post_id(conn: &mut SqliteConnection) -> Result<i32, diesel::result
 pub async fn handle_post(
     http_client: reqwest::Client,
     db: Arc<MicropubDB>,
+    site_config: Arc<crate::MicropubSiteConfig>,
     headers: http::header::HeaderMap,
     RawBody(body): RawBody<axum::body::Body>,
 ) -> Result<impl IntoResponse, StatusCode> {
@@ -460,9 +461,13 @@ pub async fn handle_post(
         })?
         .into();
 
-    let validate_response = verify_auth(http_client, &auth_header_val).await?;
+    let validate_response = verify_auth(
+        http_client,
+        site_config.clone(),
+        &auth_header_val
+    ).await?;
 
-    if validate_response.me != crate::HOST_WEBSITE {
+    if validate_response.me != site_config.micropub.host_website {
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -490,6 +495,7 @@ pub async fn handle_post(
 pub async fn handle_query(
     http_client: reqwest::Client,
     config: Arc<serde_json::Value>,
+    site_config: Arc<crate::MicropubSiteConfig>,
     headers: axum::http::HeaderMap,
     query: Query<Vec<(String, String)>>,
 ) -> Result<impl IntoResponse, StatusCode> {
@@ -510,9 +516,13 @@ pub async fn handle_query(
                     error!("failed to to_str() on auth_val: {:?}", e);
                     StatusCode::INTERNAL_SERVER_ERROR
                 })?;
-            let validate_response = verify_auth(http_client, auth).await?;
+            let validate_response = verify_auth(
+                http_client,
+                site_config.clone(),
+                auth
+            ).await?;
 
-            if validate_response.me != crate::HOST_WEBSITE {
+            if validate_response.me != site_config.micropub.host_website {
                 return Err(StatusCode::FORBIDDEN);
             }
 
@@ -533,7 +543,7 @@ pub async fn handle_media_upload(
     db: Arc<MicropubDB>,
     headers: axum::http::HeaderMap,
     mut multipart_data: Multipart,
-    blobject_store_base_uri: Arc<String>,
+    site_config: Arc<crate::MicropubSiteConfig>,
 ) -> Result<impl IntoResponse, StatusCode> {
     // verify auth
     if let Some(auth_val) = headers.get("Authorization") {
@@ -543,9 +553,13 @@ pub async fn handle_media_upload(
                 StatusCode::INTERNAL_SERVER_ERROR
             })?;
 
-        let validate_response = verify_auth(http_client.clone(), &auth).await?;
+        let validate_response = verify_auth(
+            http_client.clone(),
+            site_config.clone(),
+            &auth
+        ).await?;
 
-        if validate_response.me != crate::HOST_WEBSITE {
+        if validate_response.me != site_config.micropub.host_website {
             return Err(StatusCode::FORBIDDEN);
         }
     } else {
@@ -598,7 +612,7 @@ pub async fn handle_media_upload(
 
                 // PUT to rustyblobjectstore backend
                 // TODO make object store URL configurable
-                let resp = http_client.put(&*blobject_store_base_uri)
+                let resp = http_client.put(&site_config.blobject_store_base_uri)
                     .body(contents)
                     .send()
                     .await
@@ -774,11 +788,12 @@ pub async fn create_post(
 
 async fn verify_auth(
     http_client: reqwest::Client,
+    site_config: Arc<crate::MicropubSiteConfig>,
     auth: &str,
 ) -> Result<TokenValidateResponse, StatusCode> {
 
     let r = http_client
-        .get(crate::AUTH_TOKEN_ENDPOINT)
+        .get(&site_config.micropub.auth_token_endpoint)
         .header("accept", "application/json")
         .header("Authorization", auth)
         .send()

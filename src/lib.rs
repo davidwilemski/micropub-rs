@@ -4,6 +4,7 @@ extern crate diesel;
 use diesel::prelude::SqliteConnection;
 use diesel::r2d2;
 
+pub mod config;
 pub mod constants;
 pub mod errors;
 pub mod handler;
@@ -15,6 +16,7 @@ pub mod schema;
 pub mod templates;
 pub mod view_models;
 
+pub use crate::config::*;
 pub use crate::constants::*;
 
 pub fn new_dbconn_pool(

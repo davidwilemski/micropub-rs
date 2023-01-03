@@ -2,7 +2,7 @@ use std::env;
 use std::sync::Arc;
 
 use anyhow::anyhow;
-use log::info;
+use log::{debug, error, info};
 use serde_json::json;
 
 use axum::{
@@ -15,6 +15,7 @@ use axum::{
 use std::net::SocketAddr;
 use tower_http::services::ServeDir;
 
+use micropub_rs::config::*;
 use micropub_rs::constants::*;
 use micropub_rs::handler;
 use micropub_rs::handlers;
@@ -28,23 +29,29 @@ async fn handle_error(_err: std::io::Error) -> impl IntoResponse {
 async fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
 
+    let mut args = std::env::args();
+    args.next(); // skip first arg (usually binary name)
+    let config_path = args.next().expect("missing config file arg");
+    debug!("config_path: {:?}", config_path);
+
+    let config_contents: String = std::fs::read_to_string(&config_path)?;
+    let site_config: Arc<micropub_rs::MicropubSiteConfig> = Arc::new(
+        toml::from_str(&config_contents)
+            .map_err(|e| {
+                error!("error reading config file: {}: {:?}", config_path, e);
+                e
+            })?
+    );
+    debug!("loaded site_config: {:?}", site_config);
+
     let micropub_version = env!("CARGO_PKG_VERSION");
 
-    let dbfile = env::var("DATABASE_URL")
-        .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", "DATABASE_URL", e)))?;
-    let template_dir = env::var(TEMPLATE_DIR_VAR)
-        .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", TEMPLATE_DIR_VAR, e)))?;
-    let media_endpoint = env::var(MEDIA_ENDPOINT_VAR)
-        .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", MEDIA_ENDPOINT_VAR, e)))?;
-    let blobject_store_base_uri: Arc<String> = env::var(BLOBJECT_STORE_BASE_URI_VAR)
-        .map(|s| Arc::new(s))
-        .map_err(|e| anyhow!(format!("error reading env var {}: {:?}", BLOBJECT_STORE_BASE_URI_VAR, e)))?;
-    let dbpool = Arc::new(micropub_rs::new_dbconn_pool(&dbfile)?);
+    let dbpool = Arc::new(micropub_rs::new_dbconn_pool(&site_config.database_url)?);
     let micropub_db = Arc::new(handler::MicropubDB::new(dbpool.clone()));
     let http_client = reqwest::Client::new();
-    info!("created dbpool from {:?}", dbfile);
+    info!("created dbpool from {:?}", &site_config.database_url);
 
-    let template_pattern = std::path::Path::new(&template_dir).join("templates/**/*.html");
+    let template_pattern = std::path::Path::new(&site_config.template_dir).join("templates/**/*.html");
     let tera = Arc::new(tera::Tera::new(
         template_pattern
             .to_str()
@@ -53,18 +60,18 @@ async fn main() -> Result<(), anyhow::Error> {
     let mut base_ctx = tera::Context::new();
     base_ctx.insert("MICROPUB_RS_VERSION", micropub_version);
     base_ctx.insert("DEFAULT_LANG", "en-US");
-    base_ctx.insert("SITENAME", "David's Blog");
+    base_ctx.insert("SITENAME", &site_config.site.site_name);
     base_ctx.insert("SITEURL", "");
-    base_ctx.insert("MENUITEMS", crate::MENU_ITEMS);
+    base_ctx.insert("MENUITEMS", &site_config.site.menu_items);
     base_ctx.insert("FEED_DOMAIN", "");
     base_ctx.insert("FEED_ALL_ATOM", "feeds/all.atom.xml");
     info!(
         "initialized template system with templates in {:?}",
-        template_dir
+        &site_config.template_dir
     );
 
     let media_config = Arc::new(json!({
-        "media-endpoint": media_endpoint,
+        "media-endpoint": site_config.micropub.media_endpoint,
     }));
 
     let atom_ctx = base_ctx.clone();
@@ -79,7 +86,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 {
                     let dbpool = dbpool.clone();
                     let templates = templates.clone();
-                    move || handlers::get_index_handler(dbpool.clone(), templates.clone())
+                    let c = site_config.clone();
+                    move || handlers::get_index_handler(dbpool.clone(), templates.clone(), c.clone())
                 }
             ),
         )
@@ -110,7 +118,7 @@ async fn main() -> Result<(), anyhow::Error> {
             post({
                 let db = micropub_db.clone();
                 let client = http_client.clone();
-                let blobject_store = blobject_store_base_uri.clone();
+                let cfg = site_config.clone();
 
                 move |headers, multipart| {
                     handlers::handle_media_upload(
@@ -118,7 +126,7 @@ async fn main() -> Result<(), anyhow::Error> {
                         db.clone(),
                         headers,
                         multipart,
-                        blobject_store.clone(),
+                        cfg.clone(),
                     )
                 }
             }),
@@ -130,7 +138,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 {
                     let dbpool = dbpool.clone();
                     let client = http_client.clone();
-                    let blobject_store = blobject_store_base_uri.clone();
+                    let blobject_store = Arc::new(site_config.blobject_store_base_uri.clone());
                     move |media_id| {
                         handlers::get_media_handler(
                             media_id,
@@ -146,18 +154,21 @@ async fn main() -> Result<(), anyhow::Error> {
             post({
                 let db = micropub_db.clone();
                 let client = http_client.clone();
+                let c = site_config.clone();
 
                 move |headers: HeaderMap, body| {
-                    handlers::handle_post(client.clone(), db.clone(), headers, body)
+                    handlers::handle_post(client.clone(), db.clone(), c.clone(), headers, body)
                 }
             }).get({
                 let client = http_client.clone();
                 let config = media_config.clone();
+                let c = site_config.clone();
 
                 move |headers, query| {
                     handlers::handle_query(
                         client.clone(),
                         config.clone(),
+                        c.clone(),
                         headers,
                         query
                     )
@@ -185,7 +196,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 on_service(
                     MethodFilter::GET.union(MethodFilter::HEAD),
                     ServeDir::new(
-                        std::path::Path::new(&template_dir).join("static")
+                        std::path::Path::new(&site_config.template_dir).join("static")
                     )
                 )
                 .handle_error(handle_error)
