@@ -1,7 +1,7 @@
 // TODO make these configurable via command line, environment, or config file?
 pub const MAX_CONTENT_LENGTH: u64 = 1024 * 1024 * 50; // 50 megabytes
 pub const AUTH_TOKEN_ENDPOINT: &str = "https://tokens.indieauth.com/token";
-pub const HOST_WEBSITE: &str = "https://davidwilemski.com/";
+pub const HOST_WEBSITE: &str = "https://www.davidwilemski.com/";
 pub const MENU_ITEMS: &[(&str, &str)] = &[("Archive", "/archives")];
 pub const BLOBJECT_STORE_BASE_URI_VAR: &str = "MICROPUB_RS_BLOBJECT_STORE_BASE_URI";
 pub const MEDIA_ENDPOINT_VAR: &str = "MICROPUB_RS_MEDIA_ENDPOINT";
