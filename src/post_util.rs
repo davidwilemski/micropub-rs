@@ -31,7 +31,7 @@ pub fn get_local_datetime(
     chrono::NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S").map(|ndt| {
         chrono::DateTime::<chrono::Local>::from_utc(
             ndt,
-            offset.unwrap_or(chrono::FixedOffset::west(8 * 3600)),
+            offset.unwrap_or(chrono::FixedOffset::west_opt(8 * 3600).unwrap()),
         )
     })
 }
@@ -69,10 +69,10 @@ mod test {
 
     #[test]
     fn it_uses_content_if_no_name() {
-        assert_eq!(get_slug(None, now), "2020/10/24/153233");
+        assert_eq!(get_slug(None, now), "2020/10/24/203233");
     }
     #[test]
     fn it_truncates_content_for_slug() {
-        assert_eq!(get_slug(None, now), "2020/10/24/153233");
+        assert_eq!(get_slug(None, now), "2020/10/24/203233");
     }
 }
