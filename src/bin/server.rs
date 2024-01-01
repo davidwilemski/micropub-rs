@@ -6,7 +6,7 @@ use log::{debug, error, info};
 use serde_json::json;
 
 use axum::{
-    extract::Path,
+    extract::{Path, DefaultBodyLimit},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
     routing::{get, on, on_service, post, MethodFilter},
@@ -175,7 +175,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 }
 
             })
-        )
+        ).route_layer(DefaultBodyLimit::max(site_config.micropub.media_endpoint_max_upload_length))
         .route(
             "/tag/:tag",
             on(

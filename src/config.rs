@@ -30,7 +30,7 @@ pub struct MicropubConfig {
     pub host_website: String,
     pub media_endpoint: String,
     #[serde(default = "default_max_upload_length")]
-    pub media_endpoint_max_upload_length: u64, // XXX currently unused
+    pub media_endpoint_max_upload_length: usize,
     pub micropub_endpoint: String,
 }
 
@@ -42,6 +42,6 @@ fn default_auth_endpoint() -> String {
     crate::DEFAULT_AUTH_ENDPOINT.into()
 }
 
-fn default_max_upload_length() -> u64 {
+fn default_max_upload_length() -> usize {
     crate::DEFAULT_MAX_CONTENT_LENGTH
 }

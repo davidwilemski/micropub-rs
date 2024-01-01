@@ -468,6 +468,11 @@ pub async fn handle_post(
     ).await?;
 
     if validate_response.me != site_config.micropub.host_website {
+        error!(
+            "mismatched authorization: me: {} host_website: {}",
+           validate_response.me,
+           site_config.micropub.host_website
+        );
         return Err(StatusCode::FORBIDDEN);
     }
 
