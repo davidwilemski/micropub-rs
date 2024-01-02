@@ -3,15 +3,16 @@ use std::sync::Arc;
 
 use chrono::Local;
 use diesel::prelude::*;
-use log::{info, error};
+use log::{info, error, warn};
 use reqwest;
 use url::form_urlencoded::parse;
+use urlencoding::decode;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::errors::*;
 use crate::handler::{MicropubDB, WithDB};
-use crate::models::{NewCategory, NewOriginalBlob, NewPost, NewPhoto, NewMediaUpload};
+use crate::models::{NewCategory, NewOriginalBlob, NewPost, NewPhoto, NewMediaUpload, Post};
 use crate::{media_util, post_util};
 use crate::schema::{categories, original_blobs, posts, photos, media};
 
@@ -411,6 +412,77 @@ impl MicropubForm {
     fn from_json_bytes(b: &[u8]) -> Result<Self, anyhow::Error> {
         Ok(MicropubFormBuilder::from_json(b)?.build()?)
     }
+
+    fn from_post(p: &Post, categories: &[String], photos: &[(String, Option<String>)]) -> Self {
+        let photos_out = if photos.len() > 0 {
+            Some(photos.into_iter().map(|(url, alt)| Photo { url: url.clone(), alt: alt.clone() }).collect())
+        } else {
+            None
+        };
+
+        Self {
+            access_token: None,
+            h: p.entry_type.clone(),
+            content: p.content.clone().unwrap_or("".into()),
+            content_type: p.content_type.clone(),
+            category: Vec::from(categories),
+            name: p.name.clone(),
+            created_at: Some(p.created_at.clone()),
+            updated_at: Some(p.updated_at.clone()),
+            slug: Some(p.slug.clone()),
+            bookmark_of: p.bookmark_of.clone(),
+            photos: photos_out,
+        }
+    }
+
+    fn to_properties_json(&self) -> Result<String, anyhow::Error> {
+        let mut result = json!({
+            "type": vec![format!("h-{}", self.h)],
+            "properties": {
+                "mp-slug": vec![&self.slug],
+                "category": self.category.clone(),
+                "published": vec![&self.created_at],
+                "updated": vec![&self.updated_at],
+            }
+        });
+
+        let m = result.get_mut("properties")
+            .expect("we know the key exists")
+            .as_object_mut()
+            .expect("we know this is an object");
+        match self.content_type.as_ref().map(|s| s.as_str()) {
+            None => {
+                m.insert("content".into(), json!(vec![serde_json::Value::String(self.content.clone())]));
+            },
+            Some("html") => {
+                m.insert("content".into(), json!(vec![json!({"html": &self.content})]));
+            },
+            Some("markdown") => {
+                // for now, just send as non-rendered (raw markdown)
+                m.insert("content".into(), json!(vec![serde_json::Value::String(self.content.clone())]));
+            },
+            Some(_) => panic!("unimplemented"),
+        };
+        self.name.iter().for_each(|n| {
+            m.insert("name".into(), json!(vec![n]));
+        });
+        self.bookmark_of.iter().for_each(|b| {
+            m.insert("bookmark-of".into(), json!(vec![b]));
+        });
+        self.photos.iter().for_each(|photos| {
+            let photos_out: Vec<serde_json::Value> = photos.iter().map(|p| {
+                let mut photo = json!({"value": p.url});
+                if let Some(alt) = &p.alt {
+                    photo.as_object_mut().expect("is object").insert("alt".into(), json!(alt));
+                }
+                photo
+            }).collect();
+            m.insert("photo".into(), json!(photos_out));
+        });
+
+        Ok(serde_json::to_string(&result)?)
+    }
+
 }
 
 #[derive(Debug, Deserialize)]
@@ -503,17 +575,18 @@ pub async fn handle_query(
     site_config: Arc<crate::MicropubSiteConfig>,
     headers: axum::http::HeaderMap,
     query: Query<Vec<(String, String)>>,
+    db: Arc<MicropubDB>,
 ) -> Result<impl IntoResponse, StatusCode> {
     // looking for ?q=config
     info!("query: {:?}", query);
     let is_query = query.iter().find_map(|(header, value)| {
-        if header == "q" && value == "config" {
+        if header == "q" {
             Some(value)
         } else {
             None
         }
     });
-    if let Some(_) = is_query {
+    if let Some(q) = is_query {
         // verify auth
         if let Some(auth_val) = headers.get("Authorization") {
             let auth: &str = auth_val.to_str()
@@ -531,8 +604,73 @@ pub async fn handle_query(
                 return Err(StatusCode::FORBIDDEN);
             }
 
-            // return media endpoint
-            return Ok(config.to_string())
+            match q.as_str() {
+                "config" => {
+                    // return media endpoint
+                    return Ok(config.to_string())
+                },
+                "source" => {
+                    // return properties requested (or all?) if url in query matches one the server
+                    // can provide.
+                    let url = query.iter().find_map(|(key, value)| {
+                        if key == "url" {
+                            Some(value)
+                        } else {
+                            None
+                        }
+                    });
+
+                    if let Some(url) = url {
+                        let decoded_url = decode(url)
+                            .map_err(|e| {
+                                warn!("error decoding url: {}, error: {}", url, e);
+                                StatusCode::BAD_REQUEST
+                            })?;
+                        if let Some(slug) = decoded_url.strip_prefix(site_config.micropub.host_website.as_str()) {
+                            // get post + categories + photos for the slug
+                            let mut conn = db.dbconn()?;
+
+                            let post = Post::by_slug(&slug)
+                                .first::<Post>(&mut conn)
+                                .map_err(|e| db.handle_errors(e))?;
+
+                            use crate::schema::categories::dsl as category_dsl;
+                            let tags: Vec<String> = category_dsl::categories
+                                .select(category_dsl::category)
+                                .filter(category_dsl::post_id.eq(post.id))
+                                .get_results(&mut conn)
+                                .map_err(|e| db.handle_errors(e))?;
+
+                            use crate::schema::photos::dsl as photos_dsl;
+                            let photos: Vec<(String, Option<String>)> = photos_dsl::photos
+                                .select((photos_dsl::url, photos_dsl::alt))
+                                .filter(photos_dsl::post_id.eq(post.id))
+                                .get_results(&mut conn)
+                                .map_err(|e| db.handle_errors(e))?;
+
+                            let micropub_form = MicropubForm::from_post(&post, &tags, &photos);
+
+                            // TODO only return the properties requested
+                            return Ok(micropub_form.to_properties_json()
+                                    .map_err(|e| {
+                                        error!("error producing properties json: {:?}", e);
+                                        StatusCode::INTERNAL_SERVER_ERROR
+                                    })?
+                                )
+                        } else {
+                            info!("bad request - something else: {}", decoded_url);
+                            return Err(StatusCode::BAD_REQUEST)
+                        }
+                    } else {
+                        info!("bad request - something");
+                        return Err(StatusCode::BAD_REQUEST)
+                    }
+                },
+                _ => {
+                    info!("bad request - passthrough query type: {}", q);
+                    return Err(StatusCode::BAD_REQUEST)
+                }
+            }
         } else {
             return Err(StatusCode::UNAUTHORIZED);
         }
@@ -828,6 +966,7 @@ async fn verify_auth(
 #[cfg(test)]
 mod test {
     use super::{Photo, MicropubForm};
+    use crate::models::Post;
 
     #[test]
     fn micropub_form_decode_category_as_array() {
@@ -1051,5 +1190,123 @@ mod test {
         };
 
         assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
+    }
+
+    #[test]
+    fn micropub_encode_post_to_properties() {
+        let post = Post {
+            id: 3,
+            slug: "slug".into(),
+            entry_type: "entry".into(),
+            name: Some("title".into()),
+            content: Some("test content".into()),
+            client_id: None,
+            created_at: "2020-04-04 15:30:00".into(),
+            updated_at: "2022-04-08 19:30:00".into(),
+            content_type: None,
+            bookmark_of: None,
+        };
+        let form = MicropubForm::from_post(&post, &vec![], &vec![]);
+        let json_properties = b"{\"type\":[\"h-entry\"],\"properties\":{\"mp-slug\":[\"slug\"],\"name\":[\"title\"],\"content\":[\"test content\"],\"published\":[\"2020-04-04 15:30:00\"],\"updated\":[\"2022-04-08 19:30:00\"]}}";
+
+        assert_eq!(
+            MicropubForm::from_json_bytes(form.to_properties_json().unwrap().as_bytes()).unwrap(),
+            MicropubForm::from_json_bytes(json_properties).unwrap()
+        );
+    }
+
+    #[test]
+    fn micropub_encode_post_to_properties_with_html_content() {
+        let post = Post {
+            id: 3,
+            slug: "slug".into(),
+            entry_type: "entry".into(),
+            name: Some("title".into()),
+            content: Some("<b>test content</b>".into()),
+            client_id: None,
+            created_at: "2020-04-04 15:30:00".into(),
+            updated_at: "2022-04-08 19:30:00".into(),
+            content_type: Some("html".into()),
+            bookmark_of: None,
+        };
+        let form = MicropubForm::from_post(&post, &vec![], &vec![]);
+        eprintln!("form: {:?}", form);
+        let json_properties = b"{\"type\":[\"h-entry\"],\"properties\":{\"mp-slug\":[\"slug\"],\"name\":[\"title\"],\"content\":[{\"html\":\"<b>test content</b>\"}],\"published\":[\"2020-04-04 15:30:00\"],\"updated\":[\"2022-04-08 19:30:00\"]}}";
+
+        assert_eq!(
+            MicropubForm::from_json_bytes(form.to_properties_json().unwrap().as_bytes()).unwrap(),
+            MicropubForm::from_json_bytes(json_properties).unwrap()
+        );
+    }
+
+    #[test]
+    fn micropub_encode_post_to_properties_without_name() {
+        let post = Post {
+            id: 3,
+            slug: "slug".into(),
+            entry_type: "entry".into(),
+            name: None,
+            content: Some("test content".into()),
+            client_id: None,
+            created_at: "2020-04-04 15:30:00".into(),
+            updated_at: "2022-04-08 19:30:00".into(),
+            content_type: None,
+            bookmark_of: None,
+        };
+        let form = MicropubForm::from_post(&post, &vec![], &vec![]);
+        let json_properties = b"{\"type\":[\"h-entry\"],\"properties\":{\"mp-slug\":[\"slug\"],\"content\":[\"test content\"],\"published\":[\"2020-04-04 15:30:00\"],\"updated\":[\"2022-04-08 19:30:00\"]}}";
+
+        assert_eq!(
+            MicropubForm::from_json_bytes(form.to_properties_json().unwrap().as_bytes()).unwrap(),
+            MicropubForm::from_json_bytes(json_properties).unwrap()
+        );
+    }
+
+    #[test]
+    fn micropub_encode_post_to_properties_with_categories() {
+        let post = Post {
+            id: 3,
+            slug: "slug".into(),
+            entry_type: "entry".into(),
+            name: None,
+            content: Some("test content".into()),
+            client_id: None,
+            created_at: "2020-04-04 15:30:00".into(),
+            updated_at: "2022-04-08 19:30:00".into(),
+            content_type: None,
+            bookmark_of: None,
+        };
+        let categories: Vec<String> = vec!["tag1".into(), "tag2".into()];
+        let form = MicropubForm::from_post(&post, &categories, &vec![]);
+        let json_properties = b"{\"type\":[\"h-entry\"],\"properties\":{\"mp-slug\":[\"slug\"],\"content\":[\"test content\"],\"published\":[\"2020-04-04 15:30:00\"],\"updated\":[\"2022-04-08 19:30:00\"],\"category\":[\"tag1\",\"tag2\"]}}";
+
+        assert_eq!(
+            MicropubForm::from_json_bytes(form.to_properties_json().unwrap().as_bytes()).unwrap(),
+            MicropubForm::from_json_bytes(json_properties).unwrap()
+        );
+    }
+
+    #[test]
+    fn micropub_encode_post_to_properties_with_photos() {
+        let post = Post {
+            id: 3,
+            slug: "slug".into(),
+            entry_type: "entry".into(),
+            name: None,
+            content: Some("test content".into()),
+            client_id: None,
+            created_at: "2020-04-04 15:30:00".into(),
+            updated_at: "2022-04-08 19:30:00".into(),
+            content_type: None,
+            bookmark_of: None,
+        };
+        let photos: Vec<(String, Option<String>)> = vec![("url1".into(), None), ("url2".into(), Some("alt text".into()))];
+        let form = MicropubForm::from_post(&post, &vec![], &photos);
+        let json_properties = b"{\"type\":[\"h-entry\"],\"properties\":{\"mp-slug\":[\"slug\"],\"content\":[\"test content\"],\"published\":[\"2020-04-04 15:30:00\"],\"updated\":[\"2022-04-08 19:30:00\"],\"photo\":[{\"value\":\"url1\"},{\"value\":\"url2\",\"alt\":\"alt text\"}]}}";
+
+        assert_eq!(
+            MicropubForm::from_json_bytes(form.to_properties_json().unwrap().as_bytes()).unwrap(),
+            MicropubForm::from_json_bytes(json_properties).unwrap()
+        );
     }
 }

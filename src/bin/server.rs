@@ -163,6 +163,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 let client = http_client.clone();
                 let config = media_config.clone();
                 let c = site_config.clone();
+                let db = micropub_db.clone();
 
                 move |headers, query| {
                     handlers::handle_query(
@@ -170,7 +171,8 @@ async fn main() -> Result<(), anyhow::Error> {
                         config.clone(),
                         c.clone(),
                         headers,
-                        query
+                        query,
+                        db.clone()
                     )
                 }
 

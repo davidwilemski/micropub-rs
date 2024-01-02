@@ -1,6 +1,9 @@
 #[macro_use]
 extern crate diesel;
 
+#[macro_use]
+extern crate serde_json;
+
 use diesel::prelude::SqliteConnection;
 use diesel::r2d2;
 
