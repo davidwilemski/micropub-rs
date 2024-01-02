@@ -619,6 +619,7 @@ pub async fn handle_query(
                             None
                         }
                     });
+                    info!("source query for url: {:?}", url);
 
                     if let Some(url) = url {
                         let decoded_url = decode(url)
@@ -626,7 +627,9 @@ pub async fn handle_query(
                                 warn!("error decoding url: {}, error: {}", url, e);
                                 StatusCode::BAD_REQUEST
                             })?;
+                        info!("decoded url: {}", decoded_url);
                         if let Some(slug) = decoded_url.strip_prefix(site_config.micropub.host_website.as_str()) {
+                            info!("stripped host website prefix");
                             // get post + categories + photos for the slug
                             let mut conn = db.dbconn()?;
 
@@ -658,20 +661,21 @@ pub async fn handle_query(
                                     })?
                                 )
                         } else {
-                            info!("bad request - something else: {}", decoded_url);
+                            warn!("bad request - something else: {}", decoded_url);
                             return Err(StatusCode::BAD_REQUEST)
                         }
                     } else {
-                        info!("bad request - something");
+                        warn!("bad request - something");
                         return Err(StatusCode::BAD_REQUEST)
                     }
                 },
                 _ => {
-                    info!("bad request - passthrough query type: {}", q);
+                    warn!("bad request - passthrough query type: {}", q);
                     return Err(StatusCode::BAD_REQUEST)
                 }
             }
         } else {
+            warn!("unauthorized micropub query - missing authorization header");
             return Err(StatusCode::UNAUTHORIZED);
         }
     }
