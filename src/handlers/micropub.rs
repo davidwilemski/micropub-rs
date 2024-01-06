@@ -519,6 +519,7 @@ pub async fn handle_post(
 ) -> Result<impl IntoResponse, StatusCode> {
     let content_type = headers.get("Content-Type");
     let auth = headers.get("Authorization");
+    info!("micropub post headers: {:?}", headers);
 
     if let None = auth {
         return Err(StatusCode::FORBIDDEN);
@@ -555,6 +556,7 @@ pub async fn handle_post(
             error!("error reading bytes from body: {:?}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
+    info!("micropub post body: {:?}", body_bytes);
     // if content type is json, attempt to decode and see whether this is an action (update/delete)
     // or if it's a create.
     if let Some(ct) = content_type {
@@ -565,6 +567,7 @@ pub async fn handle_post(
                     let json_parse_result: serde_json::Result<serde_json::Value> = serde_json::from_slice(body_byte_slice);
                     match json_parse_result {
                         Ok(json) => {
+                            info!("micropub post body parsed json: {:?}", json);
                             if let Some(obj) = json.as_object() {
                                 match obj.get("action") {
                                     Some(serde_json::Value::String(action)) => {
