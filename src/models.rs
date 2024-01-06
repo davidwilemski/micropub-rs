@@ -45,7 +45,7 @@ fn posts_for_category(tag: &str) -> categories::BoxedQuery<'_, Sqlite, diesel::s
         .into_boxed()
 }
 
-#[derive(Debug, Queryable, Serialize)]
+#[derive(Clone, Debug, Queryable, Serialize)]
 pub struct Post {
     pub id: i32,
     pub slug: String,
@@ -99,6 +99,38 @@ pub struct NewPost<'a> {
     pub created_at: Option<&'a str>,
     pub updated_at: Option<&'a str>,
     pub bookmark_of: Option<&'a str>,
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = post_history)]
+pub struct NewPostHistory {
+    pub post_id: i32,
+    pub slug: String,
+    pub entry_type: String,
+    pub name: Option<String>,
+    pub content: Option<String>,
+    pub client_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub content_type: Option<String>,
+    pub bookmark_of: Option<String>,
+}
+
+impl From<Post> for NewPostHistory {
+    fn from(post: Post) -> Self {
+        Self {
+            post_id: post.id,
+            slug: post.slug,
+            entry_type: post.entry_type,
+            name: post.name,
+            content: post.content,
+            client_id: post.client_id,
+            created_at: post.created_at,
+            updated_at: post.updated_at,
+            content_type: post.content_type,
+            bookmark_of: post.bookmark_of,
+        }
+    }
 }
 
 #[derive(Debug, Insertable)]

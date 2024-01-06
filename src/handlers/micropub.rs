@@ -12,13 +12,14 @@ use thiserror::Error;
 
 use crate::errors::*;
 use crate::handler::{MicropubDB, WithDB};
-use crate::models::{NewCategory, NewOriginalBlob, NewPost, NewPhoto, NewMediaUpload, Post};
+use crate::models::{NewCategory, NewOriginalBlob, NewPost, NewPostHistory, NewPhoto, NewMediaUpload, Post};
 use crate::{media_util, post_util};
 use crate::schema::{categories, original_blobs, posts, photos, media};
 
 use axum::{
+    body::Body,
     extract::{Multipart, RawBody, Query},
-    response::IntoResponse,
+    response::{Response, IntoResponse},
 };
 use http::{header, StatusCode, HeaderValue};
 
@@ -554,6 +555,41 @@ pub async fn handle_post(
             error!("error reading bytes from body: {:?}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
+    // if content type is json, attempt to decode and see whether this is an action (update/delete)
+    // or if it's a create.
+    if let Some(ct) = content_type {
+        match ct.to_str() {
+            Ok(content_type_str) => {
+                if content_type_str.to_lowercase().contains("application/json") {
+                    let body_byte_slice: &[u8] = &body_bytes[..];
+                    let json_parse_result: serde_json::Result<serde_json::Value> = serde_json::from_slice(body_byte_slice);
+                    match json_parse_result {
+                        Ok(json) => {
+                            if let Some(obj) = json.as_object() {
+                                match obj.get("action") {
+                                    Some(serde_json::Value::String(action)) => {
+                                        if action == "update" {
+                                            return handle_update(db, site_config, obj).await;
+                                        } else {
+                                        }
+                                    },
+                                    Some(v) => {
+                                    },
+                                    None => {
+                                    },
+                                }
+                            }
+                        },
+                        Err(e) => {
+                            warn!("failed to parse json despite content type being application/json, letting request fall though to create_post: {:?}", e);
+                        },
+                    }
+                }
+            },
+            _ => (),
+        }
+    }
+
     let slug = create_post(
         db.clone(),
         content_type,
@@ -561,12 +597,253 @@ pub async fn handle_post(
         validate_response.client_id.as_str()
     ).await?;
 
-    Ok((
-        StatusCode::CREATED,
-        [
-            (header::LOCATION, format!("https://davidwilemski.com/{}", slug)),
-        ],
-    ))
+    Ok(
+        Response::builder()
+            .status(StatusCode::CREATED)
+            .header(header::LOCATION, format!("https://davidwilemski.com/{}", slug))
+            .body(Body::empty())
+            .map_err(|e| {
+                error!("error building response {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+    )
+}
+
+async fn handle_update(
+    db: Arc<MicropubDB>,
+    site_config: Arc<crate::MicropubSiteConfig>,
+    json: &serde_json::Map<String, serde_json::Value>,
+) -> Result<Response<hyper::Body>, StatusCode> {
+    info!("handling update!!! json: {:?}", json);
+
+    let url = json.get("url").and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            error!("request json did not contain 'url' key: {:?}", json);
+            StatusCode::BAD_REQUEST
+        })?;
+    let slug = url.strip_prefix(site_config.micropub.host_website.as_str())
+        .ok_or(StatusCode::BAD_REQUEST)
+        .map_err(|e| {
+            error!("provided url {:?} did not contain host website prefix {:?}", url, site_config.micropub.host_website);
+            e
+        })?;
+
+    // get post
+    let mut conn = db.dbconn()?;
+
+    let mut post: Post = Post::by_slug(&slug)
+        .first::<Post>(&mut conn)
+        .map_err(|e| db.handle_errors(e))?;
+    let original_post = post.clone();
+
+    // handle the update operations:
+    // "The values of each property inside the replace, add or delete keys MUST be an array, even if there is only a single value."
+
+    // handle replacements
+    if let Some(replacements) = json.get("replace").and_then(|r| r.as_object()) {
+        let results = replacements.into_iter().map(|(key, vs)| {
+            if let Some(values) = vs.as_array() {
+                // TODO handle other properties here
+                match key.as_str() {
+                    // TODO content[html]
+                    "content" => {
+                        match values.first() {
+                            Some(serde_json::Value::String(c)) => {
+                                info!("updating content of post with slug {:?}", post.slug);
+                                post.content_type = None;
+                                post.content = Some(c.into());
+                            },
+                            Some(serde_json::Value::Object(c)) => {
+                                // if c is an object with "html" as a key, change content type to
+                                // html and also the content value
+                                c.get("html").and_then(|v| v.as_str()).into_iter().for_each(|html_content| {
+                                    eprintln!("new content: {:?}", html_content);
+                                    info!("updating html content of post with slug {:?}", post.slug);
+                                    post.content = Some(html_content.into());
+                                    post.content_type = Some("html".into());
+                                    eprintln!("post: {:?}", post);
+                                });
+                            }
+                            Some(_) => {
+                                warn!("unhandled content structure: {:?}", values);
+                            },
+                            None => (),
+                        }
+                        Ok(())
+                    },
+                    "name" => {
+                        post.name = values.first().and_then(|c| c.as_str()).map(|c| c.into());
+                        Ok(())
+                    },
+                    "category" => {
+                        db.run_txn(|conn| {
+                            use crate::schema::categories::dsl::*;
+                            diesel::delete(
+                                categories
+                                    .filter(post_id.eq(post.id))
+                            ).execute(conn)?;
+
+                            let maybe_categories = vs.as_array()
+                                .map(|v| {
+                                    v.into_iter()
+                                        .flat_map(|v| v.as_str().ok_or(StatusCode::BAD_REQUEST)
+                                                  .map(|c| NewCategory { post_id: post.id, category: c }))
+                                        .collect::<Vec<NewCategory>>()
+                                });
+                            if let Some(new_categories) = maybe_categories {
+                                diesel::insert_into(categories)
+                                    .values(&new_categories)
+                                    .execute(conn)?;
+                            }
+                            Ok(())
+                        }).map_err(|e| e.into())
+                    },
+                    k => {
+                        warn!("unhandled key for replace action: {:?}", k);
+                        Ok(())
+                    },
+                }
+            } else {
+                error!("replace: values for {:?} were not an array. {}", key, vs);
+                Err(StatusCode::BAD_REQUEST)
+            }
+        });
+        results.fold(Ok(()), |acc, r: Result<(), StatusCode>| {
+            acc.and(r)
+        })?;
+    }
+
+    // handle additions
+    if let Some(additions) = json.get("add").and_then(|r| r.as_object()) {
+        let results = additions.into_iter().map(|(key, vs)| {
+            if let Some(_) = vs.as_array() {
+                // TODO handle other properties here
+                match key.as_str() {
+                    "category" => {
+                        db.run_txn(|conn| {
+                            use crate::schema::categories::dsl::*;
+                            let maybe_categories = vs.as_array()
+                                .map(|v| {
+                                    v.into_iter()
+                                        .flat_map(|v| v.as_str().ok_or(StatusCode::BAD_REQUEST)
+                                                  .map(|c| NewCategory { post_id: post.id, category: c }))
+                                        .collect::<Vec<NewCategory>>()
+                                });
+                            if let Some(new_categories) = maybe_categories {
+                                diesel::insert_into(categories)
+                                    .values(&new_categories)
+                                    .execute(conn)?;
+                            }
+                            Ok(())
+                        }).map_err(|e| e.into())
+                    },
+                    k => {
+                        warn!("unhandled key for add action: {:?}", k);
+                        Ok(())
+                    },
+                }
+            } else {
+                error!("replace: values for {:?} were not an array. {}", key, vs);
+                Err(StatusCode::BAD_REQUEST)
+            }
+        });
+        results.fold(Ok(()), |acc, r: Result<(), StatusCode>| {
+            acc.and(r)
+        })?;
+    }
+
+    // handle deletions
+    if let Some(deletes) = json.get("delete") {
+        let results: Box<dyn Iterator<Item=Result<(), StatusCode>>> = 
+            if let Some(delete_as_array) = deletes.as_array() {
+                // handle deleting entire properties
+                Box::new(delete_as_array.into_iter().map(|key| {
+                    // TODO handle other properties here
+                    match key.as_str() {
+                        Some("category") => {
+                            db.run_txn(|conn| {
+                                use crate::schema::categories::dsl::*;
+                                diesel::delete(
+                                    categories
+                                        .filter(post_id.eq(post.id))
+                                ).execute(conn)?;
+                                Ok(())
+                            }).map_err(|e| e.into())
+                        },
+                        k => {
+                            warn!("unhandled key for delete action: {:?}", k);
+                            Ok(())
+                        },
+                    }
+                }))
+            } else if let Some(delete_as_obj) = deletes.as_object() {
+                Box::new(delete_as_obj.into_iter().map(|(key, vs)| {
+                    match key.as_str() {
+                        "category" => {
+                            db.run_txn(|conn| {
+                                if let Some(category_values) = vs.as_array().map(|a| a.into_iter().flat_map(|v| v.as_str()).collect::<Vec<&str>>()) {
+                                    use crate::schema::categories::dsl::*;
+                                    diesel::delete(
+                                        categories
+                                            .filter(post_id.eq(post.id))
+                                            .filter(category.eq_any(&category_values))
+                                    ).execute(conn)?;
+                                }
+                                Ok(())
+                            }).map_err(|e| e.into())
+                        },
+                        k => {
+                            warn!("unhandled key for delete action: {:?}", k);
+                            Ok(())
+                        },
+                    }
+                }))
+            } else {
+                Box::new(vec![Err(StatusCode::BAD_REQUEST)].into_iter())
+            };
+        results.fold(Ok(()), |acc, r: Result<(), StatusCode>| {
+            acc.and(r)
+        })?;
+    }
+
+    // TODO consider saving copies of the old post in a history table before updating? Inserting a
+    // new version into same table?
+    db.run_txn(|conn| {
+        // TODO make timezone part of server config
+        let chicago = chrono::offset::FixedOffset::west_opt(6 * 3600).unwrap();
+        let new_updated_at = Local::now().with_timezone(&chicago)
+            .format("%Y-%m-%d %H:%M:%S");
+
+        use crate::schema::posts::dsl::*;
+        let rows_updated = diesel::update(
+            posts
+                .filter(id.eq(post.id))
+        ).set(
+            (
+                name.eq(post.name),
+                content.eq(post.content),
+                content_type.eq(post.content_type),
+                updated_at.eq(format!("{}", new_updated_at)),
+            )
+        ).execute(conn)?;
+        info!("updated post id {:?} (slug {:?}), rows affected: {}", post.id, post.slug, rows_updated);
+
+        use crate::schema::post_history::dsl as post_history_dsl;
+        diesel::insert_into(post_history_dsl::post_history)
+            .values(&NewPostHistory::from(original_post))
+            .execute(conn)?;
+        Ok(())
+    })?;
+
+    Ok(
+        Response::builder()
+            .status(StatusCode::NO_CONTENT)
+            .body(Body::empty())
+            .map_err(|e| {
+                error!("error building response {:?}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+    )
 }
 
 pub async fn handle_query(
@@ -619,7 +896,6 @@ pub async fn handle_query(
                             None
                         }
                     });
-                    info!("source query for url: {:?}", url);
 
                     if let Some(url) = url {
                         let decoded_url = decode(url)
@@ -627,9 +903,7 @@ pub async fn handle_query(
                                 warn!("error decoding url: {}, error: {}", url, e);
                                 StatusCode::BAD_REQUEST
                             })?;
-                        info!("decoded url: {}", decoded_url);
                         if let Some(slug) = decoded_url.strip_prefix(site_config.micropub.host_website.as_str()) {
-                            info!("stripped host website prefix");
                             // get post + categories + photos for the slug
                             let mut conn = db.dbconn()?;
 
@@ -661,11 +935,11 @@ pub async fn handle_query(
                                     })?
                                 )
                         } else {
-                            warn!("bad request - something else: {}", decoded_url);
+                            warn!("bad request - failed to strip host website from decoded url: {}", decoded_url);
                             return Err(StatusCode::BAD_REQUEST)
                         }
                     } else {
-                        warn!("bad request - something");
+                        warn!("bad request - url not found in request");
                         return Err(StatusCode::BAD_REQUEST)
                     }
                 },
@@ -680,7 +954,6 @@ pub async fn handle_query(
         }
     }
 
-    // TODO handle other types of queries like content queries
     return Err(StatusCode::NOT_FOUND);
 }
 

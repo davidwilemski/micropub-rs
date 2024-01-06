@@ -1,4 +1,6 @@
-table! {
+// @generated automatically by Diesel CLI.
+
+diesel::table! {
     categories (id) {
         id -> Integer,
         post_id -> Integer,
@@ -6,7 +8,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     media (id) {
         id -> Integer,
         hex_digest -> Text,
@@ -17,7 +19,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     original_blobs (id) {
         id -> Integer,
         post_id -> Integer,
@@ -25,7 +27,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     photos (id) {
         id -> Integer,
         post_id -> Integer,
@@ -34,29 +36,46 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
+    post_history (id) {
+        id -> Integer,
+        post_id -> Integer,
+        slug -> Text,
+        entry_type -> Text,
+        name -> Nullable<Text>,
+        content -> Nullable<Text>,
+        client_id -> Nullable<Text>,
+        created_at -> Text,
+        updated_at -> Text,
+        content_type -> Nullable<Text>,
+        bookmark_of -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     posts (id) {
         id -> Integer,
         slug -> Text,
         entry_type -> Text,
         name -> Nullable<Text>,
         content -> Nullable<Text>,
-        content_type -> Nullable<Text>,
         client_id -> Nullable<Text>,
         created_at -> Text,
         updated_at -> Text,
+        content_type -> Nullable<Text>,
         bookmark_of -> Nullable<Text>,
     }
 }
 
-joinable!(categories -> posts (post_id));
-joinable!(original_blobs -> posts (post_id));
-joinable!(photos -> posts (post_id));
+diesel::joinable!(categories -> posts (post_id));
+diesel::joinable!(original_blobs -> posts (post_id));
+diesel::joinable!(photos -> posts (post_id));
 
-allow_tables_to_appear_in_same_query!(
+diesel::allow_tables_to_appear_in_same_query!(
     categories,
     media,
     original_blobs,
     photos,
+    post_history,
     posts,
 );
