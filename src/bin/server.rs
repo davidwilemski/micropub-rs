@@ -98,7 +98,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 {
                     let dbpool = dbpool.clone();
                     let templates = templates.clone();
-                    move || handlers::get_archive_handler(None, dbpool.clone(), templates.clone())
+                    let c = site_config.clone();
+                    move || handlers::get_archive_handler(None, dbpool.clone(), templates.clone(), c.clone())
                 }
             ),
         )
@@ -109,7 +110,8 @@ async fn main() -> Result<(), anyhow::Error> {
                 {
                     let dbpool = dbpool.clone();
                     let templates = Arc::new(crate::templates::Templates::atom_default(atom_ctx));
-                    move || handlers::get_atom_handler(dbpool.clone(), templates.clone())
+                    let c = site_config.clone();
+                    move || handlers::get_atom_handler(dbpool.clone(), templates.clone(), c.clone())
                 }
             ),
         )
@@ -185,8 +187,9 @@ async fn main() -> Result<(), anyhow::Error> {
                 {
                     let dbpool = dbpool.clone();
                     let templates = templates.clone();
+                    let c = site_config.clone();
                     move |Path(tag): Path<String>| {
-                        handlers::get_archive_handler(Some(tag), dbpool.clone(), templates.clone())
+                        handlers::get_archive_handler(Some(tag), dbpool.clone(), templates.clone(), c.clone())
                     }
                 }
             ),
@@ -210,9 +213,10 @@ async fn main() -> Result<(), anyhow::Error> {
                 MethodFilter::GET.union(MethodFilter::HEAD),
                 {
                     let dbpool = dbpool.clone();
+                    let c = site_config.clone();
                     move |Path(post_slug): Path<String>| {
                         info!("in get post handler");
-                        handlers::get_post_handler(post_slug, dbpool.clone(), templates.clone())
+                        handlers::get_post_handler(post_slug, dbpool.clone(), templates.clone(), c.clone())
                     }
                 }
             )

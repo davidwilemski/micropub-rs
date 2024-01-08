@@ -32,6 +32,9 @@ pub struct MicropubConfig {
     #[serde(default = "default_max_upload_length")]
     pub media_endpoint_max_upload_length: usize,
     pub micropub_endpoint: String,
+
+    #[serde(deserialize_with="offset_deserialize::deserialize")]
+    pub current_timezone_offset: chrono::FixedOffset,
 }
 
 fn default_auth_token_endpoint() -> String {
@@ -44,4 +47,21 @@ fn default_auth_endpoint() -> String {
 
 fn default_max_upload_length() -> usize {
     crate::DEFAULT_MAX_CONTENT_LENGTH
+}
+
+mod offset_deserialize {
+    use chrono::FixedOffset;
+    use serde::{self, Deserialize, Deserializer};
+
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<FixedOffset, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let offset_seconds = i32::deserialize(deserializer)?;
+        let offset = FixedOffset::east_opt(offset_seconds)
+            .ok_or(serde::de::Error::custom("invalid offset"))?;
+        Ok(offset)
+    }
 }

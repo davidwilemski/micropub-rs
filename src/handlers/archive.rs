@@ -19,6 +19,7 @@ pub async fn get_archive_handler(
     tag: Option<String>,
     pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
     templates: Arc<templates::Templates>,
+    site_config: Arc<crate::MicropubSiteConfig>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let tag_ref = tag.as_ref().map(|t| t.as_str());
     let db = MicropubDB::new(pool);
@@ -46,7 +47,7 @@ pub async fn get_archive_handler(
     for mut post in posts {
         // TODO this is copied from FetchHandler. Both should not do this and should instead be
         // handled e.g. at the view model creation time.
-        let datetime = post_util::get_local_datetime(&post.created_at, None).map_err(|e| {
+        let datetime = post_util::get_local_datetime(&post.created_at, &site_config.micropub.current_timezone_offset).map_err(|e| {
             error!("date parsing error: {:?}", e);
             // TODO shouldn't be a template error but realistically this would only happen if
             // the DB had malformed data for template rendering...

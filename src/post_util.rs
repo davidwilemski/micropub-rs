@@ -26,12 +26,12 @@ pub fn get_slug(name: Option<&str>, now_fn: fn() -> DateTime<Local>) -> String {
 
 pub fn get_local_datetime(
     datetime: &str,
-    offset: Option<chrono::FixedOffset>,
+    offset: &chrono::FixedOffset,
 ) -> Result<DateTime<Local>, chrono::format::ParseError> {
     chrono::NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S").map(|ndt| {
         chrono::DateTime::<chrono::Local>::from_utc(
             ndt,
-            offset.unwrap_or(chrono::FixedOffset::west_opt(8 * 3600).unwrap()),
+            *offset,
         )
     })
 }

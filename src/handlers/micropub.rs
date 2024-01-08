@@ -812,9 +812,7 @@ async fn handle_update(
     // TODO consider saving copies of the old post in a history table before updating? Inserting a
     // new version into same table?
     db.run_txn(|conn| {
-        // TODO make timezone part of server config
-        let chicago = chrono::offset::FixedOffset::west_opt(6 * 3600).unwrap();
-        let new_updated_at = Local::now().with_timezone(&chicago)
+        let new_updated_at = Local::now().with_timezone(&site_config.micropub.current_timezone_offset)
             .format("%Y-%m-%d %H:%M:%S");
 
         use crate::schema::posts::dsl::*;

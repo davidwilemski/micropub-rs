@@ -46,7 +46,7 @@ pub async fn get_index_handler(
         .add_context("TOKEN_ENDPOINT", &site_config.micropub.auth_token_endpoint)
         .add_context("MICROPUB_ENDPOINT", &site_config.micropub.micropub_endpoint);
 
-    let datetime = post_util::get_local_datetime(&post.created_at, None).map_err(|e| {
+    let datetime = post_util::get_local_datetime(&post.created_at, &site_config.micropub.current_timezone_offset).map_err(|e| {
         error!("date parsing error: {:?}", e);
         // TODO shouldn't be a template error but realistically this would only happen if
         // the DB had malformed data for template rendering...

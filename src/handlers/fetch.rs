@@ -21,6 +21,7 @@ pub async fn get_post_handler(
     url_slug: String,
     pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
     templates: Arc<templates::Templates>,
+    site_config: Arc<crate::MicropubSiteConfig>,
 ) -> Result<impl IntoResponse, StatusCode> {
     info!("fetch_post url_slug:{:?}", url_slug);
     let db = MicropubDB::new(pool);
@@ -45,7 +46,7 @@ pub async fn get_post_handler(
         .map_err(|e| db.handle_errors(e))?;
 
     debug!("input datetime: {:?}", post.created_at);
-    let datetime = post_util::get_local_datetime(&post.created_at, None).map_err(|e| {
+    let datetime = post_util::get_local_datetime(&post.created_at, &site_config.micropub.current_timezone_offset).map_err(|e| {
         error!("date parsing error: {:?}", e);
         // TODO shouldn't be a template error but realistically this would only happen if
         // the DB had malformed data for template rendering...
