@@ -24,6 +24,20 @@ impl From<DBError> for StatusCode {
 }
 
 #[derive(Debug)]
+pub struct ServerError;
+impl From<tokio::task::JoinError> for ServerError {
+    fn from(e: tokio::task::JoinError) -> Self {
+        Self {}
+    }
+}
+
+impl From<ServerError> for StatusCode {
+    fn from(e: ServerError) -> Self {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+#[derive(Debug)]
 pub struct JSONSerializationError;
 
 #[derive(Debug)]

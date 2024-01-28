@@ -7,11 +7,12 @@ use axum::{
 use bytes::Bytes;
 use diesel::prelude::*;
 use diesel::r2d2;
+use futures::join;
 use http::StatusCode;
 use tracing::{debug, error, Instrument, debug_span};
 
 use crate::errors::*;
-use crate::handler::{MicropubDB, WithDB};
+use crate::handler::{handle_db_errors, MicropubDB, WithDB};
 use crate::models::Post;
 use crate::post_util;
 use crate::templates;
@@ -27,23 +28,44 @@ pub async fn get_post_handler(
     let db = MicropubDB::new(pool);
     let mut conn = db.dbconn()?;
 
-    let mut post = Post::by_slug(&url_slug)
-        .first::<Post>(&mut conn)
-        .map_err(|e| db.handle_errors(e))?;
+    let slug_clone = url_slug.clone();
+    let mut slug_conn = db.dbconn()?;
+    let mut post: Post = 
+        tokio::task::spawn_blocking(move || {
+            Post::by_slug(&slug_clone)
+                .first::<Post>(&mut slug_conn)
+                .map_err(|e| handle_db_errors(e))
+        })
+        .instrument(debug_span!("post_by_slug"))
+        .await.map_err(|e| Into::<ServerError>::into(e))??;
 
-    use crate::schema::categories::dsl as category_dsl;
-    let tags: Vec<String> = category_dsl::categories
-        .select(category_dsl::category)
-        .filter(category_dsl::post_id.eq(post.id))
-        .get_results(&mut conn)
-        .map_err(|e| db.handle_errors(e))?;
+    let post_id = post.id;
+    let mut tags_conn = db.dbconn()?;
+    let tags_fut =
+        tokio::task::spawn_blocking(move || {
+            use crate::schema::categories::dsl as category_dsl;
+             category_dsl::categories
+                .select(category_dsl::category)
+                .filter(category_dsl::post_id.eq(post_id))
+                .get_results(&mut tags_conn)
+                .map_err(|e| handle_db_errors(e))
+        })
+        .instrument(debug_span!("tags_by_post_id"));
 
-    use crate::schema::photos::dsl as photos_dsl;
-    let photos: Vec<(String, Option<String>)> = photos_dsl::photos
-        .select((photos_dsl::url, photos_dsl::alt))
-        .filter(photos_dsl::post_id.eq(post.id))
-        .get_results(&mut conn)
-        .map_err(|e| db.handle_errors(e))?;
+    let photos_fut =
+        tokio::task::spawn_blocking(move || {
+            use crate::schema::photos::dsl as photos_dsl;
+            photos_dsl::photos
+                .select((photos_dsl::url, photos_dsl::alt))
+                .filter(photos_dsl::post_id.eq(post_id))
+                .get_results(&mut conn)
+                .map_err(|e| handle_db_errors(e))
+        })
+        .instrument(debug_span!("photos_by_post_id"));
+
+    let (tags_result, photos_result)= join!(tags_fut, photos_fut);
+    let tags = tags_result.map_err(|e| Into::<ServerError>::into(e))??;
+    let photos = photos_result.map_err(|e| Into::<ServerError>::into(e))??;
 
     debug!("input datetime: {:?}", post.created_at);
     let datetime = post_util::get_local_datetime(&post.created_at, &site_config.micropub.current_timezone_offset).map_err(|e| {

@@ -7,9 +7,18 @@ use log::error;
 
 use crate::errors::DBError;
 
+pub fn handle_db_errors(e: diesel::result::Error) -> DBError {
+    error!("{:?}", e);
+    match e {
+        diesel::result::Error::NotFound => DBError::not_found(),
+        _ => DBError::new(),
+    }
+}
+
 pub trait WithDB {
     fn dbpool(&self) -> &Pool<ConnectionManager<SqliteConnection>>;
 
+    // TODO refactor all calls to this function over to handle_db_errors
     fn handle_errors(&self, e: diesel::result::Error) -> DBError {
         error!("{:?}", e);
         match e {
