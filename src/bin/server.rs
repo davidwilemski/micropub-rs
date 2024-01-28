@@ -14,6 +14,9 @@ use axum::{
 };
 use std::net::SocketAddr;
 use tower_http::services::ServeDir;
+use tracing_subscriber;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::fmt::format::FmtSpan;
 
 use micropub_rs::config::*;
 use micropub_rs::constants::*;
@@ -27,7 +30,11 @@ async fn handle_error(_err: std::io::Error) -> impl IntoResponse {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    env_logger::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_span_events(FmtSpan::CLOSE)
+        .compact()
+        .init();
 
     let mut args = std::env::args();
     args.next(); // skip first arg (usually binary name)

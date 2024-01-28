@@ -8,7 +8,7 @@ use bytes::Bytes;
 use diesel::prelude::*;
 use diesel::r2d2;
 use http::StatusCode;
-use log::{debug, error, info};
+use tracing::{debug, error, Instrument, debug_span};
 
 use crate::errors::*;
 use crate::handler::{MicropubDB, WithDB};
@@ -17,13 +17,13 @@ use crate::post_util;
 use crate::templates;
 use crate::view_models::{Date as DateView, Post as PostView};
 
+#[tracing::instrument(level = "info", skip(pool, templates, site_config))]
 pub async fn get_post_handler(
     url_slug: String,
     pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
     templates: Arc<templates::Templates>,
     site_config: Arc<crate::MicropubSiteConfig>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    info!("fetch_post url_slug:{:?}", url_slug);
     let db = MicropubDB::new(pool);
     let mut conn = db.dbconn()?;
 
@@ -55,16 +55,20 @@ pub async fn get_post_handler(
     post.created_at = datetime.to_rfc3339();
 
     let post_view = PostView::new_from(post, tags, DateView::from(&datetime), photos);
-    let page = templates
-        .add_context("article", &post_view)
-        .render("article.html")
-        .map_err(|e| {
-            error!("{:?}", e);
-            TemplateError
-        })?;
-    Ok(Html(page))
+    let _templates = debug_span!("template_render");
+    _templates.in_scope(|| {
+        let page = templates
+            .add_context("article", &post_view)
+            .render("article.html")
+            .map_err(|e| {
+                error!("{:?}", e);
+                TemplateError
+            })?;
+        Ok(Html(page))
+    })
 }
 
+#[tracing::instrument(level = "info", skip(pool, client, blobject_store_base_uri))]
 pub async fn get_media_handler(
     Path(media_id): Path<String>,
     client: reqwest::Client,
@@ -74,6 +78,7 @@ pub async fn get_media_handler(
     let resp = client
         .get(format!("{}/{}", blobject_store_base_uri, media_id))
         .send()
+        .instrument(debug_span!("blobject request send"))
         .await
         .map_err(|e| {
             error!("error in GET to rustyblobjectstore: {:?}", e);
@@ -92,10 +97,12 @@ pub async fn get_media_handler(
     if resp.status() != 200 {
         Err(StatusCode::NOT_FOUND)
     } else {
-        let media_body: Bytes = resp.bytes().await.map_err(|e| {
-            error!("error in receiving body as bytes(): {:?}", e);
-            MediaFetchError
-        })?;
+        let media_body: Bytes = resp.bytes()
+            .instrument(debug_span!("blobject store resp get"))
+            .await.map_err(|e| {
+                error!("error in receiving body as bytes(): {:?}", e);
+                MediaFetchError
+            })?;
         Ok((
             StatusCode::OK,
             [(

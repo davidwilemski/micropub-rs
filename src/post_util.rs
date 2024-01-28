@@ -24,6 +24,7 @@ pub fn get_slug(name: Option<&str>, now_fn: fn() -> DateTime<Local>) -> String {
     slug.replace(" ", "-")
 }
 
+#[tracing::instrument(level = "info")]
 pub fn get_local_datetime(
     datetime: &str,
     offset: &chrono::FixedOffset,

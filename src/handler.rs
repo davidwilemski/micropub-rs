@@ -18,6 +18,7 @@ pub trait WithDB {
         }
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     fn dbconn(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, DBError> {
         self.dbpool().get().map_err(|e| {
             error!("{:?}", e);
@@ -25,6 +26,7 @@ pub trait WithDB {
         })
     }
 
+    #[tracing::instrument(level = "debug", skip(self, f))]
     fn run_txn<T, F>(&self, f: F) -> Result<T, DBError>
     where
         F: FnOnce(

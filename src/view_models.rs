@@ -1,5 +1,6 @@
 use markdown;
 use serde::{Deserialize, Serialize};
+use tracing::debug_span;
 
 use crate::models::Post as DBPost;
 
@@ -52,6 +53,7 @@ pub struct Post {
 }
 
 impl Post {
+    #[tracing::instrument(level = "debug")]
     pub fn new_from(
         post: DBPost,
         categories: Vec<String>,
@@ -59,7 +61,12 @@ impl Post {
         photos: Vec<(String, Option<String>)>,
     ) -> Self {
         let content = match post.content_type.as_deref() {
-            Some("markdown") => post.content.as_deref().map(markdown::to_html),
+            Some("markdown") => {
+                let post_content_length = &post.content.as_ref().map(|c| c.len()).unwrap_or(0);
+                debug_span!("markdown_to_html", post = tracing::field::Empty, post.content.len = post_content_length).in_scope(|| {
+                    post.content.as_deref().map(markdown::to_html)
+                })
+            },
             _ => post.content,
         };
         let mut internal_photos = photos;
