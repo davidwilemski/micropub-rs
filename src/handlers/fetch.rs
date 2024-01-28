@@ -76,7 +76,13 @@ pub async fn get_post_handler(
     })?;
     post.created_at = datetime.to_rfc3339();
 
-    let post_view = PostView::new_from(post, tags, DateView::from(&datetime), photos);
+    let post_view =
+        tokio::task::spawn_blocking(move || {
+            PostView::new_from(post, tags, DateView::from(&datetime), photos)
+        })
+        .instrument(debug_span!("create post view model"))
+        .await.map_err(|e| Into::<ServerError>::into(e))?;
+
     let _templates = debug_span!("template_render");
     _templates.in_scope(|| {
         let page = templates
