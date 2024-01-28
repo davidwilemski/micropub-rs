@@ -222,7 +222,6 @@ async fn main() -> Result<(), anyhow::Error> {
                     let dbpool = dbpool.clone();
                     let c = site_config.clone();
                     move |Path(post_slug): Path<String>| {
-                        info!("in get post handler");
                         handlers::get_post_handler(post_slug, dbpool.clone(), templates.clone(), c.clone())
                     }
                 }
