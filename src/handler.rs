@@ -30,7 +30,7 @@ pub trait WithDB {
     #[tracing::instrument(level = "debug", skip(self))]
     fn dbconn(&self) -> Result<PooledConnection<ConnectionManager<SqliteConnection>>, DBError> {
         self.dbpool().get().map_err(|e| {
-            error!("{:?}", e);
+            error!("error getting connection: {:?}", e);
             DBError::new()
         })
     }
