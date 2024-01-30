@@ -18,7 +18,7 @@ use crate::schema::{categories, original_blobs, posts, photos, media};
 
 use axum::{
     body::Body,
-    extract::{Multipart, RawBody, Query},
+    extract::{Multipart, Query},
     response::{Response, IntoResponse},
 };
 use http::{header, StatusCode, HeaderValue};
@@ -515,7 +515,7 @@ pub async fn handle_post(
     db: Arc<MicropubDB>,
     site_config: Arc<crate::MicropubSiteConfig>,
     headers: http::header::HeaderMap,
-    RawBody(body): RawBody<axum::body::Body>,
+    body: axum::body::Body,
 ) -> Result<impl IntoResponse, StatusCode> {
     let content_type = headers.get("Content-Type");
     let auth = headers.get("Authorization");
@@ -550,7 +550,7 @@ pub async fn handle_post(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    let body_bytes: bytes::Bytes = hyper::body::to_bytes(body)
+    let body_bytes: bytes::Bytes = axum::body::to_bytes(body, site_config.micropub.media_endpoint_max_upload_length)
         .await
         .map_err(|e| {
             error!("error reading bytes from body: {:?}", e);
@@ -616,7 +616,7 @@ async fn handle_update(
     db: Arc<MicropubDB>,
     site_config: Arc<crate::MicropubSiteConfig>,
     json: &serde_json::Map<String, serde_json::Value>,
-) -> Result<Response<hyper::Body>, StatusCode> {
+) -> Result<Response<Body>, StatusCode> {
     info!("handling update!!! json: {:?}", json);
 
     let url = json.get("url").and_then(|v| v.as_str())

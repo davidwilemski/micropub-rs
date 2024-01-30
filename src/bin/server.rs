@@ -8,25 +8,17 @@ use serde_json::json;
 use axum::{
     extract::{Path, DefaultBodyLimit},
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
-    routing::{get, on, on_service, post, MethodFilter},
+    routing::{on, on_service, post, MethodFilter},
     Router,
 };
-use std::net::SocketAddr;
 use tower_http::services::ServeDir;
 use tracing_subscriber;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::format::FmtSpan;
 
-use micropub_rs::config::*;
-use micropub_rs::constants::*;
 use micropub_rs::handler;
 use micropub_rs::handlers;
 use micropub_rs::templates;
-
-async fn handle_error(_err: std::io::Error) -> impl IntoResponse {
-    (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong...")
-}
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
@@ -89,7 +81,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .route(
             "/",
             on(
-                MethodFilter::GET.union(MethodFilter::HEAD),
+                MethodFilter::GET.or(MethodFilter::HEAD),
                 {
                     let dbpool = dbpool.clone();
                     let templates = templates.clone();
@@ -101,7 +93,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .route(
             "/archives",
             on(
-                MethodFilter::GET.union(MethodFilter::HEAD),
+                MethodFilter::GET.or(MethodFilter::HEAD),
                 {
                     let dbpool = dbpool.clone();
                     let templates = templates.clone();
@@ -113,7 +105,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .route(
             "/feeds/all.atom.xml",
             on(
-                MethodFilter::GET.union(MethodFilter::HEAD),
+                MethodFilter::GET.or(MethodFilter::HEAD),
                 {
                     let dbpool = dbpool.clone();
                     let templates = Arc::new(crate::templates::Templates::atom_default(atom_ctx));
@@ -143,7 +135,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .route(
             "/media/:media_id",
             on(
-                MethodFilter::GET.union(MethodFilter::HEAD),
+                MethodFilter::GET.or(MethodFilter::HEAD),
                 {
                     let dbpool = dbpool.clone();
                     let client = http_client.clone();
@@ -190,7 +182,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .route(
             "/tag/:tag",
             on(
-                MethodFilter::GET.union(MethodFilter::HEAD),
+                MethodFilter::GET.or(MethodFilter::HEAD),
                 {
                     let dbpool = dbpool.clone();
                     let templates = templates.clone();
@@ -206,18 +198,20 @@ async fn main() -> Result<(), anyhow::Error> {
             Router::new().route(
                 "/*path",
                 on_service(
-                    MethodFilter::GET.union(MethodFilter::HEAD),
+                    MethodFilter::GET.or(MethodFilter::HEAD),
                     ServeDir::new(
                         std::path::Path::new(&site_config.template_dir).join("static")
                     )
                 )
-                .handle_error(handle_error)
+                .handle_error(|_| async {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "Something went wrong...")
+                })
             )
         )
         .route(
             "/*post_slug",
             on(
-                MethodFilter::GET.union(MethodFilter::HEAD),
+                MethodFilter::GET.or(MethodFilter::HEAD),
                 {
                     let dbpool = dbpool.clone();
                     let c = site_config.clone();
@@ -228,11 +222,10 @@ async fn main() -> Result<(), anyhow::Error> {
             )
         );
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3030));
-    axum::Server::bind(&addr)
-        .serve(app.into_make_service())
-        .await
-        .unwrap();
+    axum::serve(
+        tokio::net::TcpListener::bind("127.0.0.1:3030").await?,
+        app
+    ).await?;
 
     Ok(())
 }
