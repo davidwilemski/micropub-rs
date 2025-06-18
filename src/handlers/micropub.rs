@@ -131,9 +131,13 @@ impl MicropubFormBuilder {
         let json_create: MicropubJSONCreate = serde_json::from_slice(json_bytes)?;
         let mut builder = MicropubFormBuilder::new();
 
+        info!("MicropubFormBuilder::from_json - entry_type array: {:?}", json_create.entry_type);
         if let Some(entry_type) = json_create.entry_type.first() {
-            // Normalizes h-entry or h-food into entry and food
-            builder.set_h(entry_type.strip_prefix("h-").unwrap_or(&entry_type).into())
+            let normalized_type = entry_type.strip_prefix("h-").unwrap_or(&entry_type);
+            info!("Setting h field to: {}", normalized_type);
+            builder.set_h(normalized_type.into());
+        } else {
+            error!("No entry_type found in JSON or entry_type array is empty");
         }
 
         let prop_setter_pairs: Vec<(&[&str], Box<dyn Fn(&mut MicropubFormBuilder, MicropubPropertyValue)>)> = vec![
@@ -237,6 +241,7 @@ impl MicropubFormBuilder {
     }
 
     fn build(self) -> Result<MicropubForm, MicropubFormError> {
+        info!("MicropubFormBuilder::build - h field: {:?}, content field: {:?}", self.h, self.content);
         Ok(MicropubForm {
             access_token: self.access_token,
             h: self.h.ok_or(MicropubFormError::MissingField("h".into()))?,
@@ -1349,6 +1354,149 @@ mod test {
             created_at: None,
             updated_at: None,
             slug: Some("quill-test".into()),
+            bookmark_of: None,
+            photos: None,
+        };
+
+        assert_eq!(form, MicropubForm::from_json_bytes(&bytes[..]).unwrap());
+    }
+
+    #[test]
+    fn micropub_json_decode_exact_from_logs() {
+        // This is the exact JSON from the production logs that failed
+        let bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"content\":[\"Website is back online! I let things deteriorate between some infra changes in the last year but we're back.\"],\"category\":[\"meta\"]}}";
+        let result = MicropubForm::from_json_bytes(&bytes[..]);
+        match result {
+            Ok(form) => {
+                assert_eq!(form.h, "entry");
+                assert_eq!(form.content, "Website is back online! I let things deteriorate between some infra changes in the last year but we're back.");
+                assert_eq!(form.category, vec!["meta"]);
+            }
+            Err(e) => {
+                panic!("Expected parsing to succeed but got error: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn micropub_json_decode_double_parse_scenario() {
+        // Simulate the exact scenario in production: parse as serde_json::Value first, then as MicropubForm
+        let bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"content\":[\"Website is back online! I let things deteriorate between some infra changes in the last year but we're back.\"],\"category\":[\"meta\"]}}";
+        
+        // First parse as serde_json::Value (like in handle_post)
+        let json_parse_result: serde_json::Result<serde_json::Value> = serde_json::from_slice(&bytes[..]);
+        match json_parse_result {
+            Ok(json) => {
+                println!("First parse succeeded: {:?}", json);
+                // Then parse as MicropubForm (like in create_post)
+                let result = MicropubForm::from_json_bytes(&bytes[..]);
+                match result {
+                    Ok(form) => {
+                        assert_eq!(form.h, "entry");
+                        assert_eq!(form.content, "Website is back online! I let things deteriorate between some infra changes in the last year but we're back.");
+                        assert_eq!(form.category, vec!["meta"]);
+                    }
+                    Err(e) => {
+                        panic!("Expected MicropubForm parsing to succeed but got error: {:?}", e);
+                    }
+                }
+            }
+            Err(e) => {
+                panic!("First JSON parse failed: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_create_post_function_with_json() {
+        use bytes::Bytes;
+        use http::HeaderValue;
+        
+        // Simulate the exact create_post call with JSON content type
+        let json_bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"content\":[\"Website is back online! I let things deteriorate between some infra changes in the last year but we're back.\"],\"category\":[\"meta\"]}}";
+        let body = Bytes::from(&json_bytes[..]);
+        let content_type = HeaderValue::from_static("application/json");
+        
+        // Test the content type detection logic from create_post
+        let ct: String = Some(&content_type)
+            .map(move |c| {
+                c.to_str()
+                    .unwrap_or("x-www-form-url-encoded".into())
+                    .into()
+            })
+            .unwrap_or("x-www-form-url-encoded".into());
+            
+        println!("Detected content type: {}", ct);
+        assert_eq!(ct.to_lowercase().as_str(), "application/json");
+        
+        // Test the form parsing logic from create_post
+        let form_result = match ct.to_lowercase().as_str() {
+            "application/json" => {
+                MicropubForm::from_json_bytes(&body.slice(..))
+            }
+            _ => {
+                panic!("Should have detected JSON content type");
+            }
+        };
+        
+        match form_result {
+            Ok(form) => {
+                assert_eq!(form.h, "entry");
+                assert_eq!(form.content, "Website is back online! I let things deteriorate between some infra changes in the last year but we're back.");
+                assert_eq!(form.category, vec!["meta"]);
+                println!("Form parsing succeeded: h={}, content={}", form.h, form.content);
+            }
+            Err(e) => {
+                panic!("Form parsing failed with error: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_bytes_slice_vs_index_comparison() {
+        use bytes::Bytes;
+        
+        // CONFIRMED: Both &body[..] and &body.slice(..) work identically in tests
+        // The issue must be environmental/runtime-specific
+        let json_bytes = b"{\"type\":[\"h-entry\"],\"properties\":{\"content\":[\"test\"],\"category\":[\"meta\"]}}";
+        let body = Bytes::from(&json_bytes[..]);
+        
+        let result1 = MicropubForm::from_json_bytes(&body[..]);
+        let result2 = MicropubForm::from_json_bytes(&body.slice(..));
+        
+        assert!(result1.is_ok() && result2.is_ok());
+        let form1 = result1.unwrap();
+        let form2 = result2.unwrap();
+        assert_eq!(form1.h, form2.h);
+        assert_eq!(form1.content, form2.content);
+    }
+
+    #[test]
+    fn micropub_json_decode_note_entry_from_micropublish_net() {
+        let bytes = b"{
+  \"type\": [
+    \"h-entry\"
+  ],
+  \"properties\": {
+    \"content\": [
+      \"Website is back online!\"
+    ],
+    \"category\": [
+      \"meta\"
+    ]
+  }
+}
+";
+        let form = MicropubForm {
+            access_token: None,
+            name: None,
+            h: "entry".into(),
+            content: "Website is back online!".into(),
+            content_type: None,
+            category: vec!["meta".into()],
+            created_at: None,
+            updated_at: None,
+            slug: None,
             bookmark_of: None,
             photos: None,
         };
