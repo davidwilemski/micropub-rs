@@ -17,7 +17,7 @@ in naersk.buildPackage {
 
   nativeBuildInputs = with pkgs; [
     # general build stuff
-    pkgconfig
+    pkg-config
 
     # openssl
     openssl
