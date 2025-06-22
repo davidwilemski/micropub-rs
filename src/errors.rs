@@ -84,7 +84,7 @@ impl From<MediaFetchError> for StatusCode {
 }
 
 #[derive(Debug)]
-pub struct MediaStripError(&'static str);
+pub struct MediaStripError(String);
 impl From<MediaStripError> for StatusCode {
     fn from(e: MediaStripError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR

@@ -18,7 +18,7 @@ futures = "0.3"
 hyper = "1.0"
 indoc = "1.0"
 log = "0.4"
-magick_rust = "0.19"
+magick_rust = "1.0"
 markdown = "0.3"
 mime = "0.3"
 reqwest = { version = "0.11", default-features = false, features = ["gzip", "json", "stream", "rustls-tls", "tokio-rustls"] }
