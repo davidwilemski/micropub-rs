@@ -10,6 +10,7 @@ use urlencoding::decode;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::auth::TokenValidateResponse;
 use crate::errors::*;
 use crate::handler::{MicropubDB, WithDB};
 use crate::models::{NewCategory, NewOriginalBlob, NewPost, NewPostHistory, NewPhoto, NewMediaUpload, Post};
@@ -486,24 +487,6 @@ impl MicropubForm {
 
 }
 
-#[derive(Debug, Deserialize)]
-struct TokenValidateResponse {
-    me: String,
-    client_id: String,
-    issued_at: i64,
-    scope: String,
-    nonce: i64,
-}
-
-impl TokenValidateResponse {
-    fn scopes(&self) -> Vec<&str> {
-        if self.scope == "" {
-            vec![]
-        } else {
-            self.scope.split_whitespace().collect()
-        }
-    }
-}
 
 fn get_latest_post_id(conn: &mut SqliteConnection) -> Result<i32, diesel::result::Error> {
     use crate::schema::posts::dsl::*;

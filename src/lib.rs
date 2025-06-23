@@ -12,6 +12,7 @@ use std::time::Duration;
 use diesel::prelude::SqliteConnection;
 use diesel::r2d2;
 
+pub mod auth;
 pub mod config;
 pub mod constants;
 pub mod errors;
