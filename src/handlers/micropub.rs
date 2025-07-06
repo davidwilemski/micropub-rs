@@ -1106,20 +1106,17 @@ pub async fn create_post(
                 .into()
         })
         .unwrap_or("x-www-form-url-encoded".into());
-    let form = match ct.to_lowercase().as_str() {
-        "application/json" => {
-            MicropubForm::from_json_bytes(&body.slice(..)).map_err(|e| {
-                error!("{:?}", e);
-                ValidateResponseDeserializeError
-            })?
-        }
-        _ => {
-            // x-www-form-urlencoded
-            MicropubForm::from_form_bytes(&body.slice(..)).map_err(|e| {
-                error!("{:?}", e);
-                ValidateResponseDeserializeError
-            })?
-        }
+    let form = if ct.to_lowercase().starts_with("application/json") {
+        MicropubForm::from_json_bytes(&body.slice(..)).map_err(|e| {
+            error!("{:?}", e);
+            ValidateResponseDeserializeError
+        })?
+    } else {
+        // x-www-form-urlencoded
+        MicropubForm::from_form_bytes(&body.slice(..)).map_err(|e| {
+            error!("{:?}", e);
+            ValidateResponseDeserializeError
+        })?
     };
 
     let slug = match form.slug {
