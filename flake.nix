@@ -82,6 +82,14 @@
           };
         };
 
+        apps = {
+          default = {
+            type = "app";
+            program = "${self.packages.${system}.default}/bin/server";
+          };
+          server = apps.default;
+        };
+
         # For `nix develop` (optional, can be skipped):
         devShell = pkgs.mkShell {
           nativeBuildInputs = nativeBuildInputs;

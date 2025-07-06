@@ -223,7 +223,7 @@ async fn main() -> Result<(), anyhow::Error> {
         );
 
     axum::serve(
-        tokio::net::TcpListener::bind("127.0.0.1:3030").await?,
+        tokio::net::TcpListener::bind("0.0.0.0:3030").await?,
         app
     ).await?;
 
