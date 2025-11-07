@@ -272,7 +272,7 @@ impl MicropubFormBuilder {
     }
 
     fn add_category(&mut self, val: String) {
-        if let None = self.category {
+        if self.category.is_none() {
             self.category = Some(vec![])
         }
 
@@ -296,7 +296,7 @@ impl MicropubFormBuilder {
     }
 
     fn add_photo(&mut self, val: Photo) {
-        if let None = self.photos {
+        if self.photos.is_none() {
             self.photos = Some(vec![]);
         }
 
@@ -506,7 +506,7 @@ pub async fn handle_post(
     let auth = headers.get("Authorization");
     info!("micropub post headers: {:?}", headers);
 
-    if let None = auth {
+    if auth.is_none() {
         return Err(StatusCode::FORBIDDEN);
     }
 
