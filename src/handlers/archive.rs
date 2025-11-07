@@ -21,7 +21,7 @@ pub async fn get_archive_handler(
     templates: Arc<templates::Templates>,
     site_config: Arc<crate::MicropubSiteConfig>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let tag_ref = tag.as_ref().map(|t| t.as_str());
+    let tag_ref = tag.as_deref();
     let db = MicropubDB::new(pool);
     let mut conn = db.dbconn()?;
     let posts = tag_ref

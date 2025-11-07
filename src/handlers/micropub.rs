@@ -454,7 +454,7 @@ impl MicropubForm {
             .expect("we know the key exists")
             .as_object_mut()
             .expect("we know this is an object");
-        match self.content_type.as_ref().map(|s| s.as_str()) {
+        match self.content_type.as_deref() {
             None => {
                 m.insert("content".into(), json!(vec![serde_json::Value::String(self.content.clone())]));
             },
@@ -1131,7 +1131,7 @@ pub async fn create_post(
         slug: &slug, // TODO support inputting slug as part of the Micropub document/form
         entry_type: &form.h,
         content: Some(&form.content),
-        content_type: form.content_type.as_ref().map(|s| s.as_ref()),
+        content_type: form.content_type.as_deref(),
         client_id: Some(client_id),
         created_at: form.created_at.as_deref(),
         updated_at: form.updated_at.as_deref(),
