@@ -141,14 +141,14 @@ impl MicropubFormBuilder {
             (&["content", "content[html]"][..], Box::new(|builder: &mut MicropubFormBuilder, val: MicropubPropertyValue| {
                 match val {
                     MicropubPropertyValue::Values(vals) => {
-                        vals.first().iter().for_each(|s| {
-                            builder.set_content((**s).clone())
-                        });
+                        if let Some(s) = vals.first() {
+                            builder.set_content((*s).clone())
+                        }
                     }
                     MicropubPropertyValue::VecMap(vecmap) => {
                         // we may get {"content": [{"html": "blah"}]}
                         // see test case
-                        vecmap.first().iter().for_each(|map| {
+                        if let Some(map) = vecmap.first() {
                             if let Some(MicropubPropertyValue::Value(content)) = map.get("html") {
                                 builder.set_content_type("html".into());
                                 builder.set_content(content.clone());
@@ -156,7 +156,7 @@ impl MicropubFormBuilder {
                                 builder.set_content_type("markdown".into());
                                 builder.set_content(content.clone());
                             }
-                        });
+                        }
                     }
                     MicropubPropertyValue::Value(val) => {
                         builder.set_content(val.clone());
@@ -167,9 +167,9 @@ impl MicropubFormBuilder {
             (&["name"][..], Box::new(|builder: &mut MicropubFormBuilder, val: MicropubPropertyValue| {
                 match val {
                     MicropubPropertyValue::Values(vals) => {
-                        vals.first().iter().for_each(|s| {
-                            builder.set_name((**s).clone())
-                        });
+                        if let Some(s) = vals.first() {
+                            builder.set_name((*s).clone())
+                        }
                     }
                     _ => error!("unexpected name type")
                 };
@@ -180,7 +180,9 @@ impl MicropubFormBuilder {
                         builder.add_category(c);
                     }
                     MicropubPropertyValue::Values(cs) => {
-                        cs.iter().for_each(|c| builder.add_category(c.clone()));
+                        for c in &cs {
+                            builder.add_category(c.clone());
+                        }
                     }
                     _ => error!("unexpected category type")
                 };
@@ -310,9 +312,9 @@ impl MicropubFormBuilder {
                 self.add_photo(Photo{url: photo_url, alt: None});
             },
             MicropubPropertyValue::Values(mut photo_urls) => {
-                photo_urls.drain(..).for_each(|photo_url| {
+                for photo_url in photo_urls.drain(..) {
                     self.add_photo(Photo{url: photo_url, alt: None});
-                });
+                }
             },
             MicropubPropertyValue::Map(mut props) => {
                 if let Some(MicropubPropertyValue::Value(url)) = props.remove("value") {
@@ -465,13 +467,13 @@ impl MicropubForm {
             },
             Some(_) => panic!("unimplemented"),
         };
-        self.name.iter().for_each(|n| {
+        if let Some(n) = &self.name {
             m.insert("name".into(), json!(vec![n]));
-        });
-        self.bookmark_of.iter().for_each(|b| {
+        }
+        if let Some(b) = &self.bookmark_of {
             m.insert("bookmark-of".into(), json!(vec![b]));
-        });
-        self.photos.iter().for_each(|photos| {
+        }
+        if let Some(photos) = &self.photos {
             let photos_out: Vec<serde_json::Value> = photos.iter().map(|p| {
                 let mut photo = json!({"value": p.url});
                 if let Some(alt) = &p.alt {
@@ -480,7 +482,7 @@ impl MicropubForm {
                 photo
             }).collect();
             m.insert("photo".into(), json!(photos_out));
-        });
+        }
 
         Ok(serde_json::to_string(&result)?)
     }
