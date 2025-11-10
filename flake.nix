@@ -7,6 +7,11 @@
   };
 
   outputs = { self, flake-utils, naersk, nixpkgs }:
+    let
+      # from https://github.com/DeterminateSystems/nix-github-actions/blob/main/flake.nix#L21
+      meta = (builtins.fromTOML (builtins.readFile ./Cargo.toml)).package;
+      inherit (meta) name version;
+    in
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = (import nixpkgs) {
@@ -81,6 +86,20 @@
             src = src;
             mode = "clippy";
           };
+          # docker image
+          docker =
+            let
+              bin = "${self.packages.${system}.default}/bin/server";
+              in
+              pkgs.dockerTools.buildLayeredImage {
+                inherit name;
+                tag = "v${version}";
+
+                config = {
+                  Entrypoint = [ bin ];
+                  ExposedPorts."3030/tcp" = { };
+                };
+              };
         };
 
         apps = {
