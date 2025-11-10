@@ -148,14 +148,16 @@ impl MicropubFormBuilder {
                     MicropubPropertyValue::VecMap(vecmap) => {
                         // we may get {"content": [{"html": "blah"}]}
                         // see test case
-                        if let Some(map) = vecmap.first() {
-                            if let Some(MicropubPropertyValue::Value(content)) = map.get("html") {
-                                builder.set_content_type("html".into());
-                                builder.set_content(content.clone());
-                            } else if let Some(MicropubPropertyValue::Value(content)) = map.get("markdown") {
-                                builder.set_content_type("markdown".into());
-                                builder.set_content(content.clone());
-                            }
+                        if let Some(map) = vecmap.first()
+                            && let Some(MicropubPropertyValue::Value(content)) = map.get("html")
+                        {
+                            builder.set_content_type("html".into());
+                            builder.set_content(content.clone());
+                        } else if let Some(map) = vecmap.first()
+                            && let Some(MicropubPropertyValue::Value(content)) = map.get("markdown")
+                        {
+                            builder.set_content_type("markdown".into());
+                            builder.set_content(content.clone());
                         }
                     }
                     MicropubPropertyValue::Value(val) => {
@@ -272,11 +274,7 @@ impl MicropubFormBuilder {
     }
 
     fn add_category(&mut self, val: String) {
-        if self.category.is_none() {
-            self.category = Some(vec![])
-        }
-
-        self.category.as_mut().map(|categories| categories.push(val));
+        self.category.get_or_insert_with(Vec::new).push(val);
     }
 
     fn set_name(&mut self, val: String) {
@@ -296,11 +294,7 @@ impl MicropubFormBuilder {
     }
 
     fn add_photo(&mut self, val: Photo) {
-        if self.photos.is_none() {
-            self.photos = Some(vec![]);
-        }
-
-        self.photos.as_mut().map(|photos| photos.push(val));
+        self.photos.get_or_insert_with(Vec::new).push(val);
     }
 
     fn on_photo_props(
