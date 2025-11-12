@@ -44,10 +44,6 @@ enum MicropubPropertyValue {
 struct MicropubProperties(std::collections::HashMap<String, MicropubPropertyValue>);
 
 impl MicropubProperties {
-    fn new(props: std::collections::HashMap<String, MicropubPropertyValue>) -> Self {
-        Self(props)
-    }
-
     fn get(&self, prop: &str) -> Option<&MicropubPropertyValue> {
         self.0.get(prop)
     }
@@ -111,6 +107,8 @@ where F: Fn(&mut MicropubFormBuilder, MicropubPropertyValue) {
     false
 }
 
+type PropertySetter = Box<dyn Fn(&mut MicropubFormBuilder, MicropubPropertyValue)>;
+
 impl MicropubFormBuilder {
     fn new() -> Self {
         Self {
@@ -134,10 +132,10 @@ impl MicropubFormBuilder {
 
         if let Some(entry_type) = json_create.entry_type.first() {
             // Normalizes h-entry or h-food into entry and food
-            builder.set_h(entry_type.strip_prefix("h-").unwrap_or(&entry_type).into())
+            builder.set_h(entry_type.strip_prefix("h-").unwrap_or(entry_type).into())
         }
 
-        let prop_setter_pairs: Vec<(&[&str], Box<dyn Fn(&mut MicropubFormBuilder, MicropubPropertyValue)>)> = vec![
+        let prop_setter_pairs: Vec<(&[&str], PropertySetter)> = vec![
             (&["content", "content[html]"][..], Box::new(|builder: &mut MicropubFormBuilder, val: MicropubPropertyValue| {
                 match val {
                     MicropubPropertyValue::Values(vals) => {
@@ -235,7 +233,7 @@ impl MicropubFormBuilder {
         ];
 
         for (props, setter) in prop_setter_pairs {
-            set_from_props(&mut builder, setter, &json_create.properties, &props);
+            set_from_props(&mut builder, setter, &json_create.properties, props);
         }
 
         Ok(builder)
@@ -247,7 +245,7 @@ impl MicropubFormBuilder {
             h: self.h.ok_or(MicropubFormError::MissingField("h".into()))?,
             content: self.content.ok_or(MicropubFormError::MissingField("content".into()))?,
             content_type: self.content_type,
-            category: self.category.unwrap_or(vec![]),
+            category: self.category.unwrap_or_default(),
             name: self.name,
             created_at: self.created_at,
             updated_at: self.updated_at,
@@ -412,8 +410,8 @@ impl MicropubForm {
     }
 
     fn from_post(p: &Post, categories: &[String], photos: &[(String, Option<String>)]) -> Self {
-        let photos_out = if photos.len() > 0 {
-            Some(photos.into_iter().map(|(url, alt)| Photo { url: url.clone(), alt: alt.clone() }).collect())
+        let photos_out = if !photos.is_empty() {
+            Some(photos.iter().map(|(url, alt)| Photo { url: url.clone(), alt: alt.clone() }).collect())
         } else {
             None
         };
@@ -538,37 +536,31 @@ pub async fn handle_post(
     info!("micropub post body: {:?}", body_bytes);
     // if content type is json, attempt to decode and see whether this is an action (update/delete)
     // or if it's a create.
-    if let Some(ct) = content_type {
-        match ct.to_str() {
-            Ok(content_type_str) => {
-                if content_type_str.to_lowercase().contains("application/json") {
-                    let body_byte_slice: &[u8] = &body_bytes[..];
-                    let json_parse_result: serde_json::Result<serde_json::Value> = serde_json::from_slice(body_byte_slice);
-                    match json_parse_result {
-                        Ok(json) => {
-                            info!("micropub post body parsed json: {:?}", json);
-                            if let Some(obj) = json.as_object() {
-                                match obj.get("action") {
-                                    Some(serde_json::Value::String(action)) => {
-                                        if action == "update" {
-                                            return handle_update(db, site_config, obj).await;
-                                        } else {
-                                        }
-                                    },
-                                    Some(v) => {
-                                    },
-                                    None => {
-                                    },
-                                }
+    if let Some(ct) = content_type
+        && let Ok(content_type_str) = ct.to_str()
+        && content_type_str.to_lowercase().contains("application/json") {
+        let body_byte_slice: &[u8] = &body_bytes[..];
+        let json_parse_result: serde_json::Result<serde_json::Value> = serde_json::from_slice(body_byte_slice);
+        match json_parse_result {
+            Ok(json) => {
+                info!("micropub post body parsed json: {:?}", json);
+                if let Some(obj) = json.as_object() {
+                    match obj.get("action") {
+                        Some(serde_json::Value::String(action)) => {
+                            if action == "update" {
+                                return handle_update(db, site_config, obj).await;
                             }
                         },
-                        Err(e) => {
-                            warn!("failed to parse json despite content type being application/json, letting request fall though to create_post: {:?}", e);
+                        Some(_v) => {
+                        },
+                        None => {
                         },
                     }
                 }
             },
-            _ => (),
+            Err(e) => {
+                warn!("failed to parse json despite content type being application/json, letting request fall though to create_post: {:?}", e);
+            },
         }
     }
 
@@ -579,16 +571,14 @@ pub async fn handle_post(
         validate_response.client_id.as_str()
     ).await?;
 
-    Ok(
-        Response::builder()
-            .status(StatusCode::CREATED)
-            .header(header::LOCATION, format!("https://davidwilemski.com/{}", slug))
-            .body(Body::empty())
-            .map_err(|e| {
-                error!("error building response {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-    )
+    Response::builder()
+        .status(StatusCode::CREATED)
+        .header(header::LOCATION, format!("https://davidwilemski.com/{}", slug))
+        .body(Body::empty())
+        .map_err(|e| {
+            error!("error building response {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 async fn handle_update(
@@ -605,15 +595,14 @@ async fn handle_update(
         })?;
     let slug = url.strip_prefix(site_config.micropub.host_website.as_str())
         .ok_or(StatusCode::BAD_REQUEST)
-        .map_err(|e| {
+        .inspect_err(|_e| {
             error!("provided url {:?} did not contain host website prefix {:?}", url, site_config.micropub.host_website);
-            e
         })?;
 
     // get post
     let mut conn = db.dbconn()?;
 
-    let mut post: Post = Post::by_slug(&slug)
+    let mut post: Post = Post::by_slug(slug)
         .first::<Post>(&mut conn)
         .map_err(|e| db.handle_errors(e))?;
     let original_post = post.clone();
@@ -623,7 +612,7 @@ async fn handle_update(
 
     // handle replacements
     if let Some(replacements) = json.get("replace").and_then(|r| r.as_object()) {
-        let results = replacements.into_iter().map(|(key, vs)| {
+        let mut results = replacements.into_iter().map(|(key, vs)| {
             if let Some(values) = vs.as_array() {
                 // TODO handle other properties here
                 match key.as_str() {
@@ -667,7 +656,7 @@ async fn handle_update(
 
                             let maybe_categories = vs.as_array()
                                 .map(|v| {
-                                    v.into_iter()
+                                    v.iter()
                                         .flat_map(|v| v.as_str().ok_or(StatusCode::BAD_REQUEST)
                                                   .map(|c| NewCategory { post_id: post.id, category: c }))
                                         .collect::<Vec<NewCategory>>()
@@ -690,15 +679,13 @@ async fn handle_update(
                 Err(StatusCode::BAD_REQUEST)
             }
         });
-        results.fold(Ok(()), |acc, r: Result<(), StatusCode>| {
-            acc.and(r)
-        })?;
+        results.try_fold((), |_acc, r: Result<(), StatusCode>| r)?;
     }
 
     // handle additions
     if let Some(additions) = json.get("add").and_then(|r| r.as_object()) {
-        let results = additions.into_iter().map(|(key, vs)| {
-            if let Some(_) = vs.as_array() {
+        let mut results = additions.into_iter().map(|(key, vs)| {
+            if vs.as_array().is_some() {
                 // TODO handle other properties here
                 match key.as_str() {
                     "category" => {
@@ -706,7 +693,7 @@ async fn handle_update(
                             use crate::schema::categories::dsl::*;
                             let maybe_categories = vs.as_array()
                                 .map(|v| {
-                                    v.into_iter()
+                                    v.iter()
                                         .flat_map(|v| v.as_str().ok_or(StatusCode::BAD_REQUEST)
                                                   .map(|c| NewCategory { post_id: post.id, category: c }))
                                         .collect::<Vec<NewCategory>>()
@@ -729,17 +716,15 @@ async fn handle_update(
                 Err(StatusCode::BAD_REQUEST)
             }
         });
-        results.fold(Ok(()), |acc, r: Result<(), StatusCode>| {
-            acc.and(r)
-        })?;
+        results.try_fold((), |_acc, r: Result<(), StatusCode>| r)?;
     }
 
     // handle deletions
     if let Some(deletes) = json.get("delete") {
-        let results: Box<dyn Iterator<Item=Result<(), StatusCode>>> = 
+        let mut results: Box<dyn Iterator<Item=Result<(), StatusCode>>> = 
             if let Some(delete_as_array) = deletes.as_array() {
                 // handle deleting entire properties
-                Box::new(delete_as_array.into_iter().map(|key| {
+                Box::new(delete_as_array.iter().map(|key| {
                     // TODO handle other properties here
                     match key.as_str() {
                         Some("category") => {
@@ -763,7 +748,7 @@ async fn handle_update(
                     match key.as_str() {
                         "category" => {
                             db.run_txn(|conn| {
-                                if let Some(category_values) = vs.as_array().map(|a| a.into_iter().flat_map(|v| v.as_str()).collect::<Vec<&str>>()) {
+                                if let Some(category_values) = vs.as_array().map(|a| a.iter().flat_map(|v| v.as_str()).collect::<Vec<&str>>()) {
                                     use crate::schema::categories::dsl::*;
                                     diesel::delete(
                                         categories
@@ -783,9 +768,7 @@ async fn handle_update(
             } else {
                 Box::new(vec![Err(StatusCode::BAD_REQUEST)].into_iter())
             };
-        results.fold(Ok(()), |acc, r: Result<(), StatusCode>| {
-            acc.and(r)
-        })?;
+        results.try_fold((), |_acc, r: Result<(), StatusCode>| r)?;
     }
 
     // TODO consider saving copies of the old post in a history table before updating? Inserting a
@@ -815,15 +798,13 @@ async fn handle_update(
         Ok(())
     })?;
 
-    Ok(
-        Response::builder()
-            .status(StatusCode::NO_CONTENT)
-            .body(Body::empty())
-            .map_err(|e| {
-                error!("error building response {:?}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-    )
+    Response::builder()
+        .status(StatusCode::NO_CONTENT)
+        .body(Body::empty())
+        .map_err(|e| {
+            error!("error building response {:?}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })
 }
 
 pub async fn handle_query(
@@ -887,7 +868,7 @@ pub async fn handle_query(
                             // get post + categories + photos for the slug
                             let mut conn = db.dbconn()?;
 
-                            let post = Post::by_slug(&slug)
+                            let post = Post::by_slug(slug)
                                 .first::<Post>(&mut conn)
                                 .map_err(|e| db.handle_errors(e))?;
 
@@ -908,12 +889,11 @@ pub async fn handle_query(
                             let micropub_form = MicropubForm::from_post(&post, &tags, &photos);
 
                             // TODO only return the properties requested
-                            return Ok(micropub_form.to_properties_json()
+                            return micropub_form.to_properties_json()
                                     .map_err(|e| {
                                         error!("error producing properties json: {:?}", e);
                                         StatusCode::INTERNAL_SERVER_ERROR
-                                    })?
-                                )
+                                    })
                         } else {
                             warn!("bad request - failed to strip host website from decoded url: {}", decoded_url);
                             return Err(StatusCode::BAD_REQUEST)
@@ -934,7 +914,7 @@ pub async fn handle_query(
         }
     }
 
-    return Err(StatusCode::NOT_FOUND);
+    Err(StatusCode::NOT_FOUND)
 }
 
 // TODO look at axum DefaultBodyLimit and adjust
@@ -956,7 +936,7 @@ pub async fn handle_media_upload(
         let validate_response = verify_auth(
             http_client.clone(),
             site_config.clone(),
-            &auth
+            auth
         ).await?;
 
         if validate_response.me != site_config.micropub.host_website {
@@ -971,7 +951,7 @@ pub async fn handle_media_upload(
     // For security reasons it’s recommended to combine this with ContentLengthLimit to limit the size of the request payload.
     while let Ok(Some(field)) = multipart_data.next_field().await {
         match field.name() {
-            Some(name) if name == "file" => {
+            Some("file") => {
                 let filename: Option<String> = field.file_name().map(|s| s.into());
                 let content_type: Option<String> = field.content_type().map(|s| s.into());
                 let mut contents = field.bytes().await
@@ -991,12 +971,12 @@ pub async fn handle_media_upload(
                         info!("content-type: {}", f);
                         info!("attempting to strip media starting with: {:?}", &contents[0..64]);
                         info!("length of media: {}", contents.len());
-                        contents = media_util::strip_media(&contents, &f).map(|b| bytes::Bytes::from(b))?;
+                        contents = media_util::strip_media(&contents, &f).map(bytes::Bytes::from)?;
                     }
                     // still attempt to strip but don't reject if we fail
                     None => {
                         let f = "jpg";
-                        match media_util::strip_media(&contents, f).map(|b| bytes::Bytes::from(b)) {
+                        match media_util::strip_media(&contents, f).map(bytes::Bytes::from) {
                             Ok(c) => contents = c,
                             Err(e) => {
                                 // log error but we don't need to reject the whole request at this
@@ -1072,7 +1052,6 @@ pub async fn handle_media_upload(
             }
             _ => {
                 // Do nothing as we didn't find the upload
-                ()
             }
         }
     }
@@ -1098,7 +1077,7 @@ pub async fn create_post(
     let ct: String = content_type
         .map(move |c| {
             c.to_str()
-                .unwrap_or("x-www-form-url-encoded".into())
+                .unwrap_or("x-www-form-url-encoded")
                 .into()
         })
         .unwrap_or("x-www-form-url-encoded".into());
@@ -1166,7 +1145,7 @@ pub async fn create_post(
                 .map(|p| NewPhoto {
                     post_id,
                     url: p.url.as_str(),
-                    alt: p.alt.as_ref().map(|a| a.as_str()),
+                    alt: p.alt.as_deref(),
                 })
                 .collect();
 

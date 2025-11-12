@@ -34,7 +34,7 @@ pub async fn get_post_handler(
         tokio_rayon::spawn_fifo(move || {
             Post::by_slug(&slug_clone)
                 .first::<Post>(&mut slug_conn)
-                .map_err(|e| handle_db_errors(e))
+                .map_err(handle_db_errors)
         })
         .instrument(debug_span!("post_by_slug"))
         .await?;
@@ -48,7 +48,7 @@ pub async fn get_post_handler(
                 .select(category_dsl::category)
                 .filter(category_dsl::post_id.eq(post_id))
                 .get_results(&mut tags_conn)
-                .map_err(|e| handle_db_errors(e))
+                .map_err(handle_db_errors)
         })
         .instrument(debug_span!("tags_by_post_id"));
 
@@ -59,7 +59,7 @@ pub async fn get_post_handler(
                 .select((photos_dsl::url, photos_dsl::alt))
                 .filter(photos_dsl::post_id.eq(post_id))
                 .get_results(&mut conn)
-                .map_err(|e| handle_db_errors(e))
+                .map_err(handle_db_errors)
         })
         .instrument(debug_span!("photos_by_post_id"));
 

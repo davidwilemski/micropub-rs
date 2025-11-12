@@ -30,7 +30,7 @@ pub fn get_local_datetime(
     offset: &chrono::FixedOffset,
 ) -> Result<DateTime<Local>, chrono::format::ParseError> {
     chrono::NaiveDateTime::parse_from_str(datetime, "%Y-%m-%d %H:%M:%S").map(|ndt| {
-        chrono::DateTime::<chrono::Local>::from_utc(
+        chrono::DateTime::<chrono::Local>::from_naive_utc_and_offset(
             ndt,
             *offset,
         )
@@ -44,7 +44,7 @@ mod test {
     use chrono::{DateTime, Local, TimeZone};
 
     fn now() -> DateTime<Local> {
-        Local.timestamp(1603571553i64, 0u32)
+        Local.timestamp_opt(1603571553i64, 0u32).unwrap()
     }
 
     #[test]

@@ -58,7 +58,7 @@ pub async fn get_archive_handler(
         let pid = post.id;
         let post_view = PostView::new_from(
             post,
-            tags.remove(&pid).unwrap_or(vec![]),
+            tags.remove(&pid).unwrap_or_default(),
             DateView::from(&datetime),
             vec![],
         );

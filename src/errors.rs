@@ -4,6 +4,11 @@ use http::StatusCode;
 pub struct DBError {
     not_found: bool,
 }
+impl Default for DBError {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 impl DBError {
     pub fn new() -> Self {
         DBError { not_found: false }
@@ -26,13 +31,13 @@ impl From<DBError> for StatusCode {
 #[derive(Debug)]
 pub struct ServerError;
 impl From<tokio::task::JoinError> for ServerError {
-    fn from(e: tokio::task::JoinError) -> Self {
+    fn from(_e: tokio::task::JoinError) -> Self {
         Self {}
     }
 }
 
 impl From<ServerError> for StatusCode {
-    fn from(e: ServerError) -> Self {
+    fn from(_e: ServerError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
     }
 }
@@ -43,7 +48,7 @@ pub struct JSONSerializationError;
 #[derive(Debug)]
 pub struct TemplateError;
 impl From<TemplateError> for StatusCode {
-    fn from(e: TemplateError) -> Self {
+    fn from(_e: TemplateError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
     }
 }
@@ -51,7 +56,7 @@ impl From<TemplateError> for StatusCode {
 #[derive(Debug)]
 pub struct HTTPClientError;
 impl From<HTTPClientError> for StatusCode {
-    fn from(e: HTTPClientError) -> Self {
+    fn from(_e: HTTPClientError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
     }
 }
@@ -59,7 +64,7 @@ impl From<HTTPClientError> for StatusCode {
 #[derive(Debug)]
 pub struct ValidateResponseDeserializeError;
 impl From<ValidateResponseDeserializeError> for StatusCode {
-    fn from(e: ValidateResponseDeserializeError) -> Self {
+    fn from(_e: ValidateResponseDeserializeError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
     }
 }
@@ -70,7 +75,7 @@ pub struct NotAuthorized;
 #[derive(Debug)]
 pub struct MediaUploadError;
 impl From<MediaUploadError> for StatusCode {
-    fn from(e: MediaUploadError) -> Self {
+    fn from(_e: MediaUploadError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
     }
 }
@@ -78,15 +83,15 @@ impl From<MediaUploadError> for StatusCode {
 #[derive(Debug)]
 pub struct MediaFetchError;
 impl From<MediaFetchError> for StatusCode {
-    fn from(e: MediaFetchError) -> Self {
+    fn from(_e: MediaFetchError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
     }
 }
 
 #[derive(Debug)]
-pub struct MediaStripError(&'static str);
+pub struct MediaStripError(#[allow(dead_code)] pub(crate) &'static str);
 impl From<MediaStripError> for StatusCode {
-    fn from(e: MediaStripError) -> Self {
+    fn from(_e: MediaStripError) -> Self {
         StatusCode::INTERNAL_SERVER_ERROR
     }
 }

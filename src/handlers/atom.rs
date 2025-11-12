@@ -15,11 +15,6 @@ use crate::view_models::{Date as DateView, Post as PostView};
 use axum::response::IntoResponse;
 use http::{header, StatusCode};
 
-pub struct AtomHandler<DB: WithDB> {
-    db: DB,
-    templates: Arc<templates::Templates>,
-}
-
 pub async fn get_atom_handler(
     pool: Arc<r2d2::Pool<r2d2::ConnectionManager<SqliteConnection>>>,
     templates: Arc<templates::Templates>,
@@ -72,9 +67,9 @@ pub async fn get_atom_handler(
         let pid = post.id;
         let post_view = PostView::new_from(
             post,
-            tags.remove(&pid).unwrap_or(vec![]),
+            tags.remove(&pid).unwrap_or_default(),
             DateView::from(&datetime),
-            photos_by_post.remove(&pid).unwrap_or(vec![]),
+            photos_by_post.remove(&pid).unwrap_or_default(),
         );
         posts_views.push(post_view);
     }
@@ -82,9 +77,8 @@ pub async fn get_atom_handler(
     // posts_views is sorted desc from the DB
     let last_updated = posts_views
         .iter()
-        .map(|p| p.updated.as_str())
-        .nth(0)
-        .unwrap_or(&"2020-11-27 16:14:30"); // TODO allow configuration?
+        .map(|p| p.updated.as_str()).next()
+        .unwrap_or("2020-11-27 16:14:30"); // TODO allow configuration?
 
     let template = templates
         .add_context("updated_date", last_updated)

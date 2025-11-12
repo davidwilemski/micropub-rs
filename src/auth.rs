@@ -11,7 +11,7 @@ pub struct TokenValidateResponse {
 
 impl TokenValidateResponse {
     pub fn scopes(&self) -> Vec<&str> {
-        if self.scope == "" {
+        if self.scope.is_empty() {
             vec![]
         } else {
             self.scope.split_whitespace().collect()
