@@ -33,8 +33,6 @@ const ALL_COLUMNS: AllColumns = (
 );
 
 type PostSqlType = <AllColumns as Expression>::SqlType;
-type WithSlug<'a> = diesel::dsl::Eq<posts::slug, &'a str>;
-type BySlug<'a> = diesel::dsl::Filter<Post, WithSlug<'a>>;
 type BoxedPostsQuery<'a> = posts::BoxedQuery<'a, Sqlite, PostSqlType>;
 
 fn posts_for_category(tag: &str) -> categories::BoxedQuery<'_, Sqlite, diesel::sql_types::Integer> {

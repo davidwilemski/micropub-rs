@@ -12,7 +12,6 @@ use axum::{
     Router,
 };
 use tower_http::services::ServeDir;
-use tracing_subscriber;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::format::FmtSpan;
 

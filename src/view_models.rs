@@ -75,17 +75,17 @@ impl Post {
             slug: post.slug,
             entry_type: post.entry_type,
             title: post.name,
-            content: content,
+            content,
             content_type: post.content_type,
             client_id: post.client_id,
             published: post.created_at,
             updated: post.updated_at,
-            date: date,
+            date,
             tags: categories,
             bookmark_of: post.bookmark_of,
             photos: internal_photos
                 .drain(..)
-                .map(|(url, alt)| Photo { url: url, alt: alt })
+                .map(|(url, alt)| Photo { url, alt })
                 .collect(),
         }
     }

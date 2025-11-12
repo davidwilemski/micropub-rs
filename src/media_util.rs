@@ -7,7 +7,7 @@ use crate::errors::MediaStripError;
 
 static START: Once = Once::new();
 
-pub fn guess_format<'a>(content_type: &Option<&'a str>) -> Option<String> {
+pub fn guess_format(content_type: &Option<&str>) -> Option<String> {
     if let Some(ct) = content_type {
         if let Ok(m) = ct.parse::<mime::Mime>() {
             match (m.type_(), m.subtype()) {
