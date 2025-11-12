@@ -24,8 +24,9 @@ jobs:
         extra_nix_config: |
           access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
     # should I consider nix build . and nix build .#test here?
-    - name: Dev build
+    - name: debug build
       run: nix develop --command cargo build
-    - name: Dev tests
+    - name: debug mode tests
       run: nix develop --command cargo test
-    # TODO nix build .#clippy
+    - name: clippy
+      run: nix develop --command cargo clippy

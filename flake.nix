@@ -38,7 +38,10 @@
           diesel-cli
 
           cargo
+          cargo-audit
+          clippy
           rustc
+          rustfmt
 
           coreutils
           which
