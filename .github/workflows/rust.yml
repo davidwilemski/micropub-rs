@@ -20,9 +20,7 @@ jobs:
     - name: Install Nix
       uses: cachix/install-nix-action@v31
       with:
-        # Mostly to avoid GitHub rate limiting
-        extra_nix_config: |
-          access-tokens = github.com=${{ secrets.GITHUB_TOKEN }}
+        github_access_token: ${{ secrets.REAL_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
     # should I consider nix build . and nix build .#test here?
     - name: debug build
       run: nix develop --command cargo build
